@@ -6,7 +6,7 @@ import datetime
 from tqdm import tqdm
 import urllib.request
 import re
-from src.main.python.config import KobisConfig
+from config import KobisConfig
 import ast
 
 kobis_config = KobisConfig()
