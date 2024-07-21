@@ -4,12 +4,14 @@ from config import MysqlConfig
 
 class MySQLConnector:
     def __init__(self):
-        config = MysqlConfig()
-        self.create = MySQLCreateQuery(config)
-        self.insert = MySQLInsertQuery(config)
+        self.config = MysqlConfig()
+        self.create_query = MySQLCreateQuery(self)
+        self.delete_query = MySQLDeleteQuery(self)
+        self.insert_query = MySQLInsertQuery(self)
         
 class MySQLCreateQuery:
-    def __init__(self, config):
+    def __init__(self, info: MySQLConnector):
+        config = info.config
         self.conn = pymysql.connect(
             user = config.user,
             passwd = config.password,
@@ -35,7 +37,7 @@ class MySQLCreateQuery:
                     `rankOldAndNew` text,
                     `movieCd` text,
                     `movieNm` text,
-                    `openDt` text,
+                    `openDt` DATE,
                     `salesAmt` bigint DEFAULT NULL,
                     `salesShare` double DEFAULT NULL,
                     `salesInten` bigint DEFAULT NULL,
@@ -47,7 +49,8 @@ class MySQLCreateQuery:
                     `audiAcc` bigint DEFAULT NULL,
                     `scrnCnt` bigint DEFAULT NULL,
                     `showCnt` bigint DEFAULT NULL,
-                    `targetDt` text
+                    `targetDt` DATE,
+                    `elapsedDt` int DEFAULT NULL
                 );
             """
         self.cursor.execute(query)
@@ -62,14 +65,14 @@ class MySQLCreateQuery:
                     `movieCd` text,
                     `movieNm` text,
                     `movieNmEn` text,
-                    `prdtYear` bigint DEFAULT NULL,
-                    `openDt` bigint DEFAULT NULL,
-                    `typeNm` text,
-                    `prdtStatNm` text,
+                    `prdtYear` VARCHAR(4) DEFAULT NULL,
+                    `openDt` DATE,
+                    `typeNm` VARCHAR(10),
+                    `prdtStatNm` VARCHAR(5),
                     `nationAlt` text,
                     `genreAlt` text,
                     `repNationNm` text,
-                    `repGenreNm` text,
+                    `repGenreNm` VARCHAR(10),
                     `directors` JSON,
                     `companys` JSON
                 );
@@ -77,12 +80,51 @@ class MySQLCreateQuery:
         self.cursor.execute(query)
         return f"create table {table_name} complete."
 
-class MySQLInsertQuery:
-    def __init__(self, config):
-        connection_string = f"mysql+pymysql://{config.user}:{config.password}@{config.host}/{config.database}"
-        self.engine = sqlalchemy.create_engine(connection_string, fast_executemany=True)
+class MySQLDeleteQuery:
+    def __init__(self, info: MySQLConnector):
+        config = info.config
+        self.conn = pymysql.connect(
+            user = config.user,
+            passwd = config.password,
+            host = config.host,
+            db = config.database
+        )
 
-    def boxoffice(self, df):
+    def delete_boxoffice(self, start_at, end_at):
+        self.cursor = self.conn.cursor()
+        table_name = f"boxoffice"
+        query = \
+            f"""
+                DELETE FROM`{table_name}`
+                WHERE targetDt >= '{start_at}' and targetDt <= '{end_at}';
+            """
+        self.cursor.execute(query)
+        self.conn.commit()
+        self.cursor.close()
+        return f"delete table {table_name} complete."
+
+    def delete_movie(self, start_at, end_at):
+        self.cursor = self.conn.cursor()
+        table_name = f"movie"
+        query = \
+            f"""
+                DELETE FROM `{table_name}`
+                WHERE openDt >= {start_at} and openDt <= {end_at};
+            """
+        self.cursor.execute(query)
+        self.conn.commit()
+        self.cursor.close()
+        return f"create table {table_name} complete."
+
+class MySQLInsertQuery:
+    def __init__(self, info: MySQLConnector):
+        self.info = info
+        config = self.info.config
+        connection_string = f"mysql+pymysql://{config.user}:{config.password}@{config.host}/{config.database}"
+        self.engine = sqlalchemy.create_engine(connection_string)#, fast_executemany=True)
+
+    def insert_boxoffice(self, df):
+        self.info.delete_query.delete_boxoffice(df["targetDt"].min(), df["targetDt"].max())
         self.conn = self.engine.connect()
         df.to_sql(
             name="boxoffice", 
@@ -91,7 +133,8 @@ class MySQLInsertQuery:
             index=False)
         self.conn.close()
 
-    def movie(self, df):
+    def insert_movie(self, df):
+        self.info.delete_query.delete_movie(df["openDt"].min(), df["openDt"].max())
         self.conn = self.engine.connect()
         df.to_sql(
             name="movie", 
@@ -112,4 +155,4 @@ if __name__ == '__main__':
     MovieList = kobisdata_extractor.get_MovieList("2022", 1)
 
     db_conn = MySQLConnector()
-    db_conn.insert.movie(MovieList)
+    db_conn.insertor.movie(MovieList)

@@ -15,20 +15,16 @@ class KobisDataExtractor():
     def __init__(self):
         self.kobis_key = kobis_config.key
 
-    def __get_extract_range(self, startDt, period=None):
+    def __get_extract_range(self, startDt_str, endDt_str):
         f = "%Y%m%d"
-        start_time = datetime.datetime.strptime(startDt, f)
-        now_time = datetime.datetime.now() - datetime.timedelta(days=1)
-        if period == None:
-            limit_time = now_time
-        else:
-            limit_time = min(now_time, start_time + datetime.timedelta(days=period))
+        startDt = datetime.datetime.strptime(startDt_str, f)
+        endDt = datetime.datetime.strptime(endDt_str, f)
         extract_range = []
-        extract_time = start_time
-        while extract_time < limit_time:
-            extract_str = extract_time.strftime(f)
-            extract_range.append(extract_str)
-            extract_time += datetime.timedelta(days=1)            
+        extractDt = startDt
+        while extractDt <= endDt:
+            extractDt_str = extractDt.strftime(f)
+            extract_range.append(extractDt_str)
+            extractDt += datetime.timedelta(days=1)            
         return extract_range
 
     def __request_DailyBoxOffice(self, targetDt):
@@ -91,11 +87,10 @@ class KobisDataExtractor():
             list_exist = False 
         return df, list_exist
 
-    def get_MovieList(self, openStartDt, period=1):
+    def get_MovieList(self, start_year, end_year):
         movie_list = pd.DataFrame()
-        target_year = openStartDt
-        for years in range(period):
-            target_year = str(int(target_year) + years)
+        for year in range(start_year, end_year+1):
+            target_year = str(year)
             movie_y = pd.DataFrame()
             curPage = 1
             list_exist = True
@@ -115,7 +110,7 @@ class KobisDataExtractor():
             "movieCd": "str",
             "movieNm": "str",
             "movieNmEn": "str",
-            "prdtYear": "int",
+            "prdtYear": "str",
             "openDt": "int",
             "typeNm": "str",
             "prdtStatNm": "str",
@@ -129,8 +124,8 @@ class KobisDataExtractor():
         movie_list = movie_list.astype(col_types)
         return movie_list
 
-    def get_DailyBoxOffice(self, startDt, period=None):
-        extract_range = self.__get_extract_range(startDt, period)
+    def get_DailyBoxOffice(self, startDt_str, endDt_str):
+        extract_range = self.__get_extract_range(startDt_str, endDt_str)
         boxoffice = pd.DataFrame()
         for extract_date in extract_range:
             df = self.__request_DailyBoxOffice(extract_date)
@@ -158,20 +153,20 @@ class KobisDataExtractor():
         boxoffice["elapsedDt"] = boxoffice["elapsedDt"].astype(int)
         return boxoffice
     
-    def get_MovieBoxOffice(self, movieCd, period=None):
-        movie_info = self.__request_MovieInfo(movieCd=movieCd)
-        openDt = movie_info["openDt"]
-        boxoffice = self.get_DailyBoxOffice(openDt, period)
-        boxoffice = boxoffice[boxoffice["movieCd"]==movieCd].copy()
-        boxoffice = boxoffice.reset_index(drop=True)
-        return boxoffice
+    # def get_MovieBoxOffice(self, movieCd, period=None):
+    #     movie_info = self.__request_MovieInfo(movieCd=movieCd)
+    #     openDt = movie_info["openDt"]
+    #     boxoffice = self.get_DailyBoxOffice(openDt, period)
+    #     boxoffice = boxoffice[boxoffice["movieCd"]==movieCd].copy()
+    #     boxoffice = boxoffice.reset_index(drop=True)
+    #     return boxoffice
 
-    def get_MoviesBoxOffice(self, movieCds, period=None):
-        boxoffice = pd.DataFrame()
-        for movieCd in movieCds:
-            df = self.get_MovieBoxOffice(movieCd=movieCd, period=period)
-            boxoffice = pd.concat([boxoffice, df], ignore_index=True)
-        return boxoffice
+    # def get_MoviesBoxOffice(self, movieCds, period=None):
+    #     boxoffice = pd.DataFrame()
+    #     for movieCd in movieCds:
+    #         df = self.get_MovieBoxOffice(movieCd=movieCd, period=period)
+    #         boxoffice = pd.concat([boxoffice, df], ignore_index=True)
+    #     return boxoffice
     
    
 
@@ -181,10 +176,11 @@ if __name__ == '__main__':
     # print("DailyBoxOffice")
     # print(DailyBoxOffice)
 
-    MovieList = kobisdata_extractor.get_MovieList("2022", 1)
+    MovieList = kobisdata_extractor.get_MovieList(2024, 2024)
     print("MovieList")
     print(MovieList.head(3))
 
+    print(MovieList["openDt"].min())
     # print(df.head(5))
     # 서울의 봄: 20212866 / 슬램덩크: 20228555
     # movieCd = "20228555"
