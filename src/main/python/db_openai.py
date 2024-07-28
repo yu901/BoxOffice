@@ -39,6 +39,13 @@ def __get_sql(question, msdb):
     return query 
 
 if __name__ == '__main__':
+    from mysql_connector import MySQLConnector
 
-    sql = get_sql("boxoffice", "What movie has the highest ticket sales in 2024?")
-    print("sql:\n", sql)
+    # Q. What movie will have the highest advance ticket sales in 2024-01-01?
+    question = input("Please enter your question.")
+    sql = get_sql("boxoffice", question)
+    print(sql)
+
+    mysql_conn = MySQLConnector()
+    result = mysql_conn.select_query.get_result(sql)
+    print(result)

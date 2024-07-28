@@ -8,6 +8,7 @@ class MySQLConnector:
         self.create_query = MySQLCreateQuery(self)
         self.delete_query = MySQLDeleteQuery(self)
         self.insert_query = MySQLInsertQuery(self)
+        self.select_query = MySQLSelectQuery(self)
         
 class MySQLCreateQuery:
     def __init__(self, info: MySQLConnector):
@@ -148,6 +149,25 @@ class MySQLInsertQuery:
             )
         self.conn.close()
 
+
+class MySQLSelectQuery:
+    def __init__(self, info: MySQLConnector):
+        config = info.config
+        self.conn = pymysql.connect(
+            user = config.user,
+            passwd = config.password,
+            host = config.host,
+            db = config.database
+        )
+
+    def get_result(self, query):
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(query)
+        result = self.cursor.fetchall()
+        self.conn.commit()
+        self.cursor.close()
+        return result
+    
 if __name__ == '__main__':
     from kobisdata_extractor import KobisDataExtractor
 
