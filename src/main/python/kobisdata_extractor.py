@@ -3,11 +3,7 @@ import json
 import pandas as pd
 import numpy as np
 import datetime
-from tqdm import tqdm
-import urllib.request
-import re
 from config import KobisConfig
-import ast
 
 kobis_config = KobisConfig()
 

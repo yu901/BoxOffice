@@ -43,3 +43,7 @@ class MysqlConfig(BaseConfig):
     
     def get_url(self):
         return f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+
+class SQLiteConfig:
+    def __init__(self):
+        self.db_path = os.path.join("./db/movie.sqlite")
