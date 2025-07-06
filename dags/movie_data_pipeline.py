@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime
 from src.main.python.sqlite_connector import SQLiteConnector
 from src.main.python.kobisdata_extractor import KobisDataExtractor
@@ -36,7 +36,7 @@ default_args = {
 with DAG(
     dag_id='kobis_movie_data_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',  # 매일 실행 (테스트 시 수동 실행 권장)
+    schedule='@daily',  # 매일 실행 (테스트 시 수동 실행 권장)
     catchup=False,
     tags=['kobis', 'sqlite', 'movie'],
 ) as dag:
