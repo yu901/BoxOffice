@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import numpy as np
 import datetime
-from config import KobisConfig
+from src.main.python.config import KobisConfig
 
 kobis_config = KobisConfig()
 
