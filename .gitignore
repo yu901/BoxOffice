@@ -4,3 +4,6 @@
 venv/*
 db/*
 airflow/*
+dagster/*
+!dagster/definition.py
+!dagster/dagster.yaml
