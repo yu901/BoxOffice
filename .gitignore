@@ -1,6 +1,7 @@
 *.yml
 *.pyc
 *.env
+*.ipynb_checkpoints
 venv/*
 db/*
 airflow/*

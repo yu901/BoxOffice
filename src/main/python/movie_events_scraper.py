@@ -1,0 +1,435 @@
+import requests
+import json
+import pandas as pd
+from bs4 import BeautifulSoup
+import re
+from fake_useragent import UserAgent
+import abc
+from typing import List, Dict, TypedDict, Optional, Union
+import logging
+import html
+from datetime import datetime
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# --- 통합 데이터 구조 정의 ---
+
+class UnifiedEvent(TypedDict):
+    """통합된 이벤트 정보 구조"""
+    theater_chain: str
+    event_title: str
+    movie_title: Optional[str]
+    goods_name: Optional[str]
+    start_date: Optional[str]
+    end_date: Optional[str]
+    event_url: str
+    image_url: Optional[str]
+    # 내부 ID
+    event_id: str
+    goods_id: Optional[str]
+
+
+class UnifiedStock(TypedDict):
+    """통합된 재고 정보 구조"""
+    theater_chain: str
+    theater_name: str
+    status: str  # 예: '보유', '소진', '소진 임박', '준비중'
+    quantity: Optional[Union[int, str]]
+
+
+# --- 추상 베이스 클래스 ---
+
+class TheaterEventScraper(abc.ABC):
+    """영화관 이벤트 스크레이퍼의 추상 베이스 클래스"""
+
+    def __init__(self, chain_name: str):
+        self.chain_name = chain_name
+        self.session = requests.Session()
+        self.session.headers.update({'User-Agent': UserAgent().random})
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    @abc.abstractmethod
+    def get_events(self) -> List[UnifiedEvent]:
+        """
+        진행 중인 굿즈 관련 이벤트를 크롤링하여 통합된 형식의 리스트로 반환합니다.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_goods_stock(self, event: UnifiedEvent) -> List[UnifiedStock]:
+        """
+        특정 이벤트에 해당하는 굿즈의 지점별 재고를 크롤링합니다.
+        """
+        raise NotImplementedError
+
+
+# --- 영화관별 구현 클래스 ---
+
+class CGVScraper(TheaterEventScraper):
+    """CGV 이벤트 및 재고 스크레이퍼"""
+
+    def __init__(self):
+        super().__init__("CGV")
+        self.EVENT_LIST_URL = "https://m.cgv.co.kr/Event/GiveawayEventList.aspx/GetGiveawayEventList"
+        self.EVENT_DETAIL_URL = "https://m.cgv.co.kr/Event/GiveawayEventDetail.aspx/GetGiveawayEventDetail"
+        self.THEATER_STOCK_URL = "https://m.cgv.co.kr/Event/GiveawayEventDetail.aspx/GetGiveawayTheaterInfo"
+
+    def _get_goods_idx(self, event_idx: str) -> Optional[str]:
+        """이벤트 ID로 굿즈 ID(GiveawayItemCode)를 조회합니다."""
+        try:
+            body = {"eventIndex": event_idx, "giveawayIndex": None}
+            response = self.session.post(self.EVENT_DETAIL_URL, json=body)
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("d", {}).get("GiveawayItemList", [])
+            if items:
+                return items[0].get("GiveawayItemCode")
+        except requests.RequestException as e:
+            self.logger.error(f"굿즈 ID 조회 실패 (Event ID: {event_idx}): {e}")
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"굿즈 ID 파싱 실패 (Event ID: {event_idx}): {e}")
+        return None
+
+    def get_events(self) -> List[UnifiedEvent]:
+        self.logger.info("이벤트 목록 조회를 시작합니다.")
+        body = {"theaterCode": "", "pageNumber": "1", "pageSize": "100"}
+        try:
+            response = self.session.post(self.EVENT_LIST_URL, json=body)
+            response.raise_for_status()
+            data = response.json()
+            soup = BeautifulSoup(data['d']['List'], 'html.parser')
+            event_tags = soup.find_all("li")
+        except requests.RequestException as e:
+            self.logger.error(f"이벤트 목록 요청 실패: {e}")
+            return []
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"이벤트 목록 파싱 실패: {e}")
+            return []
+
+        all_events = []
+        for tag in event_tags:
+            try:
+                event_idx = tag['data-eventidx']
+                event_name = tag.find("strong").get_text(strip=True)
+                event_period = tag.find("span").get_text(strip=True)
+                image_url = tag.find("img")["src"] if tag.find("img") else None
+
+                goods_idx = self._get_goods_idx(event_idx)
+                if not goods_idx:
+                    continue
+
+                # 영화 제목 및 굿즈 이름 파싱
+                movie_match = re.match(r'\[(.*?)\]', event_name)
+                if movie_match:
+                    movie_title = movie_match.group(1).strip()
+                    goods_name = event_name[movie_match.end():].strip()
+                else:
+                    movie_title = event_name
+                    goods_name = event_name
+
+                # 날짜 파싱
+                dates = [d.strip() for d in event_period.split('~')]
+                start_date = dates[0] if len(dates) > 0 else None
+                end_date = dates[1] if len(dates) > 1 else None
+
+                all_events.append(UnifiedEvent(
+                    theater_chain=self.chain_name,
+                    event_title=event_name,
+                    movie_title=movie_title,
+                    goods_name=goods_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    event_url=f"https://m.cgv.co.kr/Event/DetailView.aspx?Idx={event_idx}",
+                    image_url=image_url,
+                    event_id=event_idx,
+                    goods_id=goods_idx
+                ))
+            except (AttributeError, KeyError) as e:
+                self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {tag}, 오류: {e}")
+                continue
+        
+        self.logger.info(f"총 {len(all_events)}개의 이벤트를 조회했습니다.")
+        return all_events
+
+    def get_goods_stock(self, event: UnifiedEvent) -> List[UnifiedStock]:
+        goods_idx = event.get("goods_id")
+        if not goods_idx:
+            self.logger.warning("재고 조회를 위한 goods_id가 없습니다.")
+            return []
+
+        self.logger.info(f"'{event['goods_name']}' 재고 조회를 시작합니다. (Goods ID: {goods_idx})")
+        all_stocks = []
+        status_map = {
+            "type2": "보유", "type2.5": "소진 중", "type3": "소진 임박", "type4": "소진"
+        }
+        
+        try:
+            # 전체 지역 코드 가져오기
+            body = {"giveawayIndex": goods_idx, "areaCode": None}
+            response = self.session.post(self.THEATER_STOCK_URL, json=body)
+            response.raise_for_status()
+            area_list = response.json().get("d", {}).get("AreaList", [])
+
+            # 지역별로 극장 재고 조회
+            for area in area_list:
+                area_code = area.get("AreaCode")
+                body = {"giveawayIndex": goods_idx, "areaCode": area_code}
+                response = self.session.post(self.THEATER_STOCK_URL, json=body)
+                response.raise_for_status()
+                theaters = response.json().get("d", {}).get("TheaterList", [])
+                
+                for theater in theaters:
+                    status_code = theater.get("CountTypeCode", "")
+                    all_stocks.append(UnifiedStock(
+                        theater_chain=self.chain_name,
+                        theater_name=theater.get("TheaterName", "알 수 없음"),
+                        status=status_map.get(status_code, status_code),
+                        quantity=None
+                    ))
+        except requests.RequestException as e:
+            self.logger.error(f"재고 조회 요청 실패: {e}")
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"재고 조회 파싱 실패: {e}")
+            
+        return all_stocks
+
+
+class LotteCinemaScraper(TheaterEventScraper):
+    """롯데시네마 이벤트 및 재고 스크레이퍼"""
+
+    def __init__(self):
+        super().__init__("롯데시네마")
+        self.BASE_URL = "https://www.lottecinema.co.kr/LCWS/Event/EventData.aspx"
+        self.session.headers.update({
+            "Referer": "https://www.lottecinema.co.kr/NLCHS/Event",
+            "Origin": "https://www.lottecinema.co.kr",
+        })
+
+    def _make_request(self, method_name: str, params: Dict) -> Optional[Dict]:
+        """롯데시네마 API 요청을 처리하는 헬퍼 함수"""
+        payload = {
+            "MethodName": method_name,
+            "channelType": "HO", "osType": "W",
+            "osVersion": self.session.headers['User-Agent'],
+        }
+        payload.update(params)
+        
+        files = {"paramList": (None, json.dumps(payload), "application/json")}
+        
+        try:
+            # 세션 유지를 위해 이벤트 페이지를 먼저 방문
+            self.session.get("https://www.lottecinema.co.kr/NLCHS/Event")
+            response = self.session.post(self.BASE_URL, files=files)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            self.logger.error(f"API 요청 실패 ({method_name}): {e}")
+        except json.JSONDecodeError as e:
+            self.logger.error(f"API 응답 파싱 실패 ({method_name}): {e}")
+        return None
+
+    def get_events(self) -> List[UnifiedEvent]:
+        self.logger.info("이벤트 목록 조회를 시작합니다.")
+        params = {
+            "EventClassificationCode": "20", "SearchText": "", "CinemaID": "",
+            "PageNo": 1, "PageSize": 100, "MemberNo": "0"
+        }
+        data = self._make_request("GetEventLists", params)
+        if not data or "Items" not in data:
+            return []
+
+        all_events = []
+        for item in data["Items"]:
+            try:
+                event_id = item.get("EventID")
+                event_name = item.get("EventName", "")
+                
+                # 굿즈 정보 조회
+                detail_data = self._make_request("GetInfomationDeliveryEventDetail", {"EventID": event_id})
+                goods_items = detail_data.get("InfomationDeliveryEventDetail", [{}])[0].get("GoodsGiftItems", [])
+                
+                if not goods_items:
+                    continue
+                
+                goods_info = goods_items[0]
+                goods_id = goods_info.get("FrGiftID")
+                goods_full_name = goods_info.get("FrGiftNm", "")
+
+                # 영화 제목 및 굿즈 이름 파싱
+                movie_match = re.search(r'<([^<>]+)>', event_name)
+                movie_title = movie_match.group(1).strip() if movie_match else None
+                
+                goods_match = re.search(r',\s*(.*?)\)', goods_full_name)
+                goods_name = goods_match.group(1).strip() if goods_match else goods_full_name
+
+                all_events.append(UnifiedEvent(
+                    theater_chain=self.chain_name,
+                    event_title=event_name,
+                    movie_title=movie_title,
+                    goods_name=goods_name,
+                    start_date=item.get("ProgressStartDate"),
+                    end_date=item.get("ProgressEndDate"),
+                    event_url=f"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateView?EventID={event_id}",
+                    image_url=item.get("ImageUrl"),
+                    event_id=event_id,
+                    goods_id=goods_id
+                ))
+            except (AttributeError, KeyError, IndexError) as e:
+                self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {item}, 오류: {e}")
+                continue
+        
+        self.logger.info(f"총 {len(all_events)}개의 이벤트를 조회했습니다.")
+        return all_events
+
+    def get_goods_stock(self, event: UnifiedEvent) -> List[UnifiedStock]:
+        event_id = event.get("event_id")
+        goods_id = event.get("goods_id")
+        if not event_id or not goods_id:
+            self.logger.warning("재고 조회를 위한 event_id 또는 goods_id가 없습니다.")
+            return []
+
+        self.logger.info(f"'{event['goods_name']}' 재고 조회를 시작합니다. (Event ID: {event_id}, Goods ID: {goods_id})")
+        params = {"EventID": event_id, "GiftID": goods_id}
+        data = self._make_request("GetCinemaGoods", params)
+        if not data or "CinemaDivisionGoods" not in data:
+            return []
+
+        all_stocks = []
+        for theater in data["CinemaDivisionGoods"]:
+            quantity = theater.get("Cnt")
+            status = "보유" if int(quantity) > 0 else "소진"
+            
+            all_stocks.append(UnifiedStock(
+                theater_chain=self.chain_name,
+                theater_name=theater.get("CinemaNameKR", "알 수 없음"),
+                status=status,
+                quantity=quantity
+            ))
+        return all_stocks
+
+
+class MegaboxScraper(TheaterEventScraper):
+    """메가박스 이벤트 및 재고 스크레이퍼"""
+
+    def __init__(self):
+        super().__init__("메가박스")
+        self.EVENT_LIST_URL = "https://www.megabox.co.kr/on/oh/ohe/Event/eventMngDiv.do"
+        self.EVENT_DETAIL_URL = "https://www.megabox.co.kr/event/detail"
+        self.THEATER_STOCK_URL = "https://www.megabox.co.kr/on/oh/ohe/Event/selectGoodsStockPrco.do"
+        self.session.headers.update({
+            "Referer": "https://www.megabox.co.kr/event/movie",
+            "Origin": "https://www.megabox.co.kr",
+            "X-Requested-With": "XMLHttpRequest"
+        })
+
+    def _get_goods_info_from_detail(self, event_no: str) -> Optional[Dict[str, str]]:
+        """이벤트 상세 페이지에서 굿즈 정보(이름, 번호)를 조회합니다."""
+        try:
+            response = self.session.get(self.EVENT_DETAIL_URL, params={"eventNo": event_no})
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            button = soup.find("button", id="btnSelectGoodsStock")
+            if button:
+                return {"name": button.get("data-nm"), "id": button.get("data-pn")}
+        except requests.RequestException as e:
+            self.logger.error(f"굿즈 정보 조회 실패 (Event No: {event_no}): {e}")
+        return None
+
+    def get_events(self) -> List[UnifiedEvent]:
+        self.logger.info("이벤트 목록 조회를 시작합니다.")
+        body = {
+            "currentPage": "1", "recordCountPerPage": "1000", "eventStatCd": "ONG",
+            "eventTitle": "", "eventDivCd": "CED03", "eventTyCd": "", "orderReqCd": "ONGlist"
+        }
+        try:
+            response = self.session.post(self.EVENT_LIST_URL, data=body)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            event_tags = soup.select("div.event-list > ul > li")
+        except requests.RequestException as e:
+            self.logger.error(f"이벤트 목록 요청 실패: {e}")
+            return []
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"이벤트 목록 파싱 실패: {e}")
+            return []
+
+        all_events = []
+        for tag in event_tags:
+            try:
+                link = tag.find("a", class_="eventBtn")
+                if not link: continue
+
+                event_no = link["data-no"]
+                event_title = link["title"].replace("상세보기", "").strip()
+                period = tag.find("p", class_="date").get_text(strip=True)
+                image_url = tag.find("img")["src"] if tag.find("img") else None
+                
+                goods_info = self._get_goods_info_from_detail(event_no)
+                if not goods_info:
+                    continue
+
+                goods_name = html.unescape(goods_info["name"]).strip()
+                goods_id = goods_info["id"]
+
+                # 영화 제목 파싱
+                movie_match = re.search(r'<([^<>]+)>', goods_name)
+                movie_title = movie_match.group(1).strip() if movie_match else None
+
+                # 날짜 파싱
+                dates = [d.strip() for d in period.split('~')]
+                start_date = dates[0] if len(dates) > 0 else None
+                end_date = dates[1] if len(dates) > 1 else None
+
+                all_events.append(UnifiedEvent(
+                    theater_chain=self.chain_name,
+                    event_title=event_title,
+                    movie_title=movie_title,
+                    goods_name=goods_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    event_url=f"{self.EVENT_DETAIL_URL}?eventNo={event_no}",
+                    image_url=image_url,
+                    event_id=event_no,
+                    goods_id=goods_id
+                ))
+            except (AttributeError, KeyError) as e:
+                self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {tag}, 오류: {e}")
+                continue
+        
+        self.logger.info(f"총 {len(all_events)}개의 이벤트를 조회했습니다.")
+        return all_events
+
+
+    def get_goods_stock(self, event: UnifiedEvent) -> List[UnifiedStock]:
+        goods_id = event.get("goods_id")
+        if not goods_id:
+            self.logger.warning("재고 조회를 위한 goods_id가 없습니다.")
+            return []
+
+        self.logger.info(f"'{event['goods_name']}' 재고 조회를 시작합니다. (Goods ID: {goods_id})")
+        
+        all_stocks = []
+        body = {"goodsNo": goods_id}
+        
+        try:
+            response = self.session.post(self.THEATER_STOCK_URL, data=body)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            theater_tags = soup.find_all("li", class_="brch")
+
+            for tag in theater_tags:
+                theater_name = tag.find("a").get_text(strip=True) if tag.find("a") else "알 수 없는 지점"
+                status = tag.find("span").get_text(strip=True) if tag.find("span") else "알 수 없음"
+                all_stocks.append(UnifiedStock(
+                    theater_chain=self.chain_name,
+                    theater_name=theater_name,
+                    status=status,
+                    quantity=None
+                ))
+        except requests.RequestException as e:
+            self.logger.error(f"재고 조회 요청 실패: {e}")
+        except Exception as e:
+            self.logger.error(f"재고 조회 파싱 실패: {e}")
+            
+        return all_stocks
