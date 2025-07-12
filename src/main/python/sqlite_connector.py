@@ -31,11 +31,28 @@ class SQLiteConnector:
                 directors TEXT, companys TEXT
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS goods_stock (
+                scraped_at DATETIME,
+                theater_chain TEXT,
+                event_title TEXT,
+                movie_title TEXT,
+                goods_name TEXT,
+                theater_name TEXT,
+                status TEXT,
+                quantity TEXT
+            );
+        """)
         self.conn.commit()
         cursor.close()
 
     def insert_boxoffice(self, df):
         df.to_sql("boxoffice", self.engine, if_exists='append', index=False)
+
+    def insert_goods_stock(self, df):
+        df.to_sql("goods_stock", self.engine, if_exists='append', index=False, dtype={
+            'scraped_at': types.DateTime,
+        })
 
     def insert_movie(self, df):
         df["directors"] = df["directors"].astype(str)
