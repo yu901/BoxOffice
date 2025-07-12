@@ -28,6 +28,13 @@ def get_all_events() -> List[UnifiedEvent]:
             logger.error(f"{scraper.chain_name} 이벤트 수집 중 오류 발생: {e}", exc_info=True)
     return all_events
 
+@op(out=Out(List[Dict]))
+def get_events_from_db() -> List[Dict]:
+    """DB에 저장된 이벤트 목록을 가져옵니다."""
+    db = SQLiteConnector()
+    events_df = db.select_query("SELECT * FROM goods_event")
+    return events_df.to_dict('records')
+
 @op(ins={"events": In(List[Dict])}, out=Out(List[Dict]))
 def get_all_stocks(events: List[Dict]) -> List[Dict]:
     """수집된 모든 이벤트에 대해 재고 정보를 수집합니다."""
@@ -52,10 +59,7 @@ def get_all_stocks(events: List[Dict]) -> List[Dict]:
             
             for stock in stocks:
                 enriched_stock = {
-                    "theater_chain": event["theater_chain"],
-                    "event_title": event["event_title"],
-                    "movie_title": event["movie_title"],
-                    "goods_name": event["goods_name"],
+                    "event_id": event["event_id"],
                     "theater_name": stock["theater_name"],
                     "status": stock["status"],
                     "quantity": stock["quantity"],
@@ -65,6 +69,27 @@ def get_all_stocks(events: List[Dict]) -> List[Dict]:
             logger.error(f"'{event['goods_name']}' 재고 조회 중 오류 발생: {e}", exc_info=True)
 
     return all_stocks_enriched
+
+@op(ins={"events": In(List[Dict])})
+def save_events_to_db(events: List[Dict]):
+    """수집된 이벤트 정보를 데이터베이스에 저장합니다."""
+    logger = get_dagster_logger()
+    if not events:
+        logger.info("저장할 이벤트 정보가 없습니다.")
+        return
+
+    db = SQLiteConnector()
+    new_events_df = pd.DataFrame(events)
+    
+    # DB에 이미 있는 event_id 조회
+    exist_events_df = db.select_query("SELECT event_id FROM goods_event")
+    exist_ids = set(exist_events_df["event_id"].unique())
+    
+    # 신규 이벤트만 필터링
+    final_events_to_insert = new_events_df[~new_events_df["event_id"].isin(exist_ids)]
+
+    db.insert_goods_event(final_events_to_insert)
+    logger.info(f"총 {len(final_events_to_insert)}건의 신규 이벤트 정보를 DB에 저장했습니다.")
 
 @op(ins={"stocks": In(List[Dict])})
 def save_stocks_to_db(stocks: List[Dict]):
@@ -82,15 +107,28 @@ def save_stocks_to_db(stocks: List[Dict]):
     logger.info(f"총 {len(stocks_df)}건의 재고 정보를 DB에 저장했습니다.")
 
 @job
+def goods_events_job():
+    """매일 아침 영화관 굿즈 이벤트를 수집하여 저장하는 작업"""
+    events = get_all_events()
+    save_events_to_db(events)
+
+@job
 def goods_stock_check_job():
     """영화관 굿즈 재고를 주기적으로 확인하고 저장하는 작업"""
-    events = get_all_events()
+    events = get_events_from_db()
     stocks = get_all_stocks(events)
     save_stocks_to_db(stocks)
 
+goods_events_schedule = ScheduleDefinition(
+    job=goods_events_job,
+    cron_schedule="0 8 * * *",  # 매일 아침 8시에 실행
+    name="daily_goods_events_check",
+    execution_timezone="Asia/Seoul"
+)
+
 goods_stock_schedule = ScheduleDefinition(
     job=goods_stock_check_job,
-    cron_schedule="*/1 * * * *",  # 10분마다 실행
+    cron_schedule="*/10 * * * *",  # 10분마다 실행
     name="periodic_goods_stock_check",
     execution_timezone="Asia/Seoul"
 )

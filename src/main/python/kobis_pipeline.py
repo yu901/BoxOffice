@@ -8,14 +8,41 @@ import pandas as pd
 def extract_kobis_data(context):
     logger = get_dagster_logger()
     extractor = KobisDataExtractor()
+    db = SQLiteConnector()
 
-    # 어제 날짜
-    target_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-    logger.info(f"박스오피스 추출 날짜: {target_date}")
+    # --- Box Office Backfill Logic ---
+    yesterday = datetime.now() - timedelta(days=1)
+    
+    # DB에서 가장 최근 데이터 날짜 조회
+    latest_date_df = db.select_query("SELECT MAX(targetDt) as max_date FROM boxoffice")
+    
+    start_date = None
+    # DB에 데이터가 없거나 날짜가 없는 경우, 최근 7일치 수집
+    if latest_date_df.empty or pd.isna(latest_date_df['max_date'].iloc[0]):
+        logger.info("박스오피스 데이터가 없습니다. 최근 7일치 데이터를 수집합니다.")
+        start_date = yesterday - timedelta(days=6)
+    else:
+        # 마지막 날짜의 다음날부터 수집 시작
+        latest_date_in_db = pd.to_datetime(latest_date_df['max_date'].iloc[0]).date()
+        start_date = (latest_date_in_db + timedelta(days=1))
 
-    # 1. boxoffice
-    boxoffice_df = extractor.get_DailyBoxOffice(target_date, target_date)
-    logger.info(f"박스오피스 수집 완료. {len(boxoffice_df)}건")
+    boxoffice_df = pd.DataFrame()
+    all_boxoffice_dfs = []
+    # 수집 시작일이 어제보다 이전일 경우에만 데이터 수집
+    if start_date <= yesterday.date():
+        logger.info(f"박스오피스 데이터 수집 기간: {start_date.strftime('%Y-%m-%d')} ~ {yesterday.strftime('%Y-%m-%d')}")
+        current_date = start_date
+        while current_date <= yesterday.date():
+            daily_df = extractor.get_DailyBoxOffice(datetime.combine(current_date, datetime.min.time()))
+            if not daily_df.empty:
+                all_boxoffice_dfs.append(daily_df)
+            current_date += timedelta(days=1)
+        
+        if all_boxoffice_dfs:
+            boxoffice_df = pd.concat(all_boxoffice_dfs, ignore_index=True)
+        logger.info(f"박스오피스 수집 완료. {len(boxoffice_df)}건")
+    else:
+        logger.info("박스오피스 데이터가 최신 상태입니다. 수집을 건너뜁니다.")
 
     # 2. movie list
     movie_df = extractor.get_MovieList(2025, 2025)
@@ -29,8 +56,11 @@ def save_kobis_data(boxoffice_df, movie_df):
     db = SQLiteConnector()
 
     # 1. boxoffice 삽입
-    db.insert_boxoffice(boxoffice_df)
-    logger.info(f"{len(boxoffice_df)}건 boxoffice 삽입 완료")
+    if not boxoffice_df.empty:
+        db.insert_boxoffice(boxoffice_df)
+        logger.info(f"{len(boxoffice_df)}건 boxoffice 삽입 완료")
+    else:
+        logger.info("삽입할 신규 박스오피스 데이터가 없습니다.")
 
     # 2. movie: 중복제거 후 삽입
     exist_movie_df = db.select_query("SELECT movieCd FROM movie")
