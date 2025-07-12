@@ -257,11 +257,19 @@ class LotteCinemaScraper(TheaterEventScraper):
                 goods_full_name = goods_info.get("FrGiftNm", "")
 
                 # 영화 제목 및 굿즈 이름 파싱
-                movie_match = re.search(r'<([^<>]+)>', event_name)
-                movie_title = movie_match.group(1).strip() if movie_match else None
-                
-                goods_match = re.search(r',\s*(.*?)\)', goods_full_name)
-                goods_name = goods_match.group(1).strip() if goods_match else goods_full_name
+                movie_title_match = re.search(r'<([^<>]+)>', event_name)
+                movie_title = movie_title_match.group(1).strip() if movie_title_match else None
+
+                if '시그니처 아트카드' in event_name:
+                    goods_name = '시그니처 아트카드'
+                elif 'SPECIAL ART CARD' in event_name:
+                    goods_name = '스페셜 아트카드'
+                else:
+                    # <...> 제거
+                    cleaned_goods_name = re.sub(r'<[^<>]+>', '', goods_full_name).strip()
+                    # 콤마와 괄호 사이의 내용 추출
+                    goods_match = re.search(r',\s*(.*?)\s*\)', cleaned_goods_name)
+                    goods_name = goods_match.group(1).strip() if goods_match else cleaned_goods_name
 
                 all_events.append(UnifiedEvent(
                     theater_chain=self.chain_name,
@@ -270,7 +278,7 @@ class LotteCinemaScraper(TheaterEventScraper):
                     goods_name=goods_name,
                     start_date=item.get("ProgressStartDate"),
                     end_date=item.get("ProgressEndDate"),
-                    event_url=f"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateView?EventID={event_id}",
+                    event_url=f"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateView?eventId={event_id}",
                     image_url=item.get("ImageUrl"),
                     event_id=event_id,
                     goods_id=goods_id
@@ -328,10 +336,14 @@ class MegaboxScraper(TheaterEventScraper):
         try:
             response = self.session.get(self.EVENT_DETAIL_URL, params={"eventNo": event_no})
             response.raise_for_status()
+            response.encoding = 'utf-8'
             soup = BeautifulSoup(response.text, 'html.parser')
             button = soup.find("button", id="btnSelectGoodsStock")
             if button:
-                return {"name": button.get("data-nm"), "id": button.get("data-pn")}
+                goods_data = {"name": button.get("data-nm"), "id": button.get("data-pn")}
+                return goods_data
+            else:
+                return None
         except requests.RequestException as e:
             self.logger.error(f"굿즈 정보 조회 실패 (Event No: {event_no}): {e}")
         return None
@@ -345,8 +357,9 @@ class MegaboxScraper(TheaterEventScraper):
         try:
             response = self.session.post(self.EVENT_LIST_URL, data=body)
             response.raise_for_status()
+            response.encoding = 'utf-8'
             soup = BeautifulSoup(response.text, 'html.parser')
-            event_tags = soup.select("div.event-list > ul > li")
+            event_tags = soup.select("div.event-list > div.item")
         except requests.RequestException as e:
             self.logger.error(f"이벤트 목록 요청 실패: {e}")
             return []
@@ -355,15 +368,24 @@ class MegaboxScraper(TheaterEventScraper):
             return []
 
         all_events = []
-        for tag in event_tags:
+        for i, tag in enumerate(event_tags):
             try:
-                link = tag.find("a", class_="eventBtn")
+                link = tag.find("a")
                 if not link: continue
+                 # onclick 속성에서 event_no 추출
+                onclick_attr = link.get("onclick", "")
+                match = re.search(r"fn_eventDetail\('(\d+)'", onclick_attr)
+                if not match:
+                    continue
+                event_no = match.group(1)
+                img_tag = link.find("img")
+                if not img_tag: continue
 
-                event_no = link["data-no"]
-                event_title = link["title"].replace("상세보기", "").strip()
-                period = tag.find("p", class_="date").get_text(strip=True)
-                image_url = tag.find("img")["src"] if tag.find("img") else None
+                event_title = img_tag.get("alt", "").strip()
+                image_url = img_tag.get("data-src")
+
+                period_tag = link.find("p", class_="date")
+                period = period_tag.get_text(strip=True) if period_tag else ""
                 
                 goods_info = self._get_goods_info_from_detail(event_no)
                 if not goods_info:
@@ -372,9 +394,19 @@ class MegaboxScraper(TheaterEventScraper):
                 goods_name = html.unescape(goods_info["name"]).strip()
                 goods_id = goods_info["id"]
 
-                # 영화 제목 파싱
-                movie_match = re.search(r'<([^<>]+)>', goods_name)
-                movie_title = movie_match.group(1).strip() if movie_match else None
+                movie_title = None
+                movie_match_goods = re.search(r'[<\[](.*?)[>\]]', goods_name)
+                if movie_match_goods:
+                    movie_title = movie_match_goods.group(1).strip()
+                
+                if not movie_title:
+                    movie_match_event = re.search(r'[<\[](.*?)[>\]]', event_title)
+                    if movie_match_event:
+                        movie_title = movie_match_event.group(1).strip()
+
+                if movie_title:
+                    cleaned_goods_name = re.sub(r'\s*[<\[].*?[>\]]\s*', '', goods_name).strip()
+                    goods_name = cleaned_goods_name if cleaned_goods_name else re.sub(r'\s*[<\[].*?[>\]]\s*', '', event_title).strip()
 
                 # 날짜 파싱
                 dates = [d.strip() for d in period.split('~')]
@@ -392,7 +424,7 @@ class MegaboxScraper(TheaterEventScraper):
                     image_url=image_url,
                     event_id=event_no,
                     goods_id=goods_id
-                ))
+                ))            
             except (AttributeError, KeyError) as e:
                 self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {tag}, 오류: {e}")
                 continue
