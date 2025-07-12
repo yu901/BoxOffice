@@ -32,13 +32,24 @@ class SQLiteConnector:
             );
         """)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS goods_stock (
-                scraped_at DATETIME,
+            CREATE TABLE IF NOT EXISTS goods_event (
+                event_id TEXT PRIMARY KEY,
                 theater_chain TEXT,
                 event_title TEXT,
                 movie_title TEXT,
                 goods_name TEXT,
+                goods_id TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                event_url TEXT,
+                image_url TEXT
+            );
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS goods_stock (
+                scraped_at DATETIME,
                 theater_name TEXT,
+                event_id TEXT,
                 status TEXT,
                 quantity TEXT
             );
@@ -49,7 +60,14 @@ class SQLiteConnector:
     def insert_boxoffice(self, df):
         df.to_sql("boxoffice", self.engine, if_exists='append', index=False)
 
+    def insert_goods_event(self, df):
+        """굿즈 이벤트 정보를 DB에 저장합니다."""
+        df.to_sql("goods_event", self.engine, if_exists='append', index=False, dtype={
+            'event_id': types.TEXT,
+        })
+
     def insert_goods_stock(self, df):
+        """굿즈 재고 정보를 DB에 저장합니다."""
         df.to_sql("goods_stock", self.engine, if_exists='append', index=False, dtype={
             'scraped_at': types.DateTime,
         })
