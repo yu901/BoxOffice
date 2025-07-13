@@ -278,7 +278,7 @@ class LotteCinemaScraper(TheaterEventScraper):
                     goods_name=goods_name,
                     start_date=item.get("ProgressStartDate"),
                     end_date=item.get("ProgressEndDate"),
-                    event_url=f"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateView?eventId={event_id}",
+                    event_url=f"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateInfo?eventId={event_id}",
                     image_url=item.get("ImageUrl"),
                     event_id=event_id,
                     goods_id=goods_id
