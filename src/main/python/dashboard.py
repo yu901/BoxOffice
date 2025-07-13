@@ -270,25 +270,29 @@ def show_goods_stock_dashboard(stock_df, events_df):
 
     # --- End of logic ---
 
-    checked_rows = edited_df[edited_df["재고 현황 보기"]] # 이제 이 변수는 항상 최대 1개의 행만 가집니다.
-    if not checked_rows.empty and not latest_stock_df.empty:
-        selected_row = checked_rows.iloc[-1]
-        selected_event_id = selected_row['event_id']
-        selected_goods_name = selected_row['goods_name']
-        
-        # 선택된 이벤트의 event_id를 직접 사용하여 재고 현황을 조회합니다.
-        with st.expander(f"**'{selected_goods_name}'** 지점별 재고 현황", expanded=True):
-            stock_display_df = latest_stock_df[
-                latest_stock_df['event_id'] == selected_event_id
-            ]
-            stock_display_cols = {
-                "theater_name": "지점명",
-                "status": "재고 상태"
-            }
-            st.dataframe(stock_display_df[list(stock_display_cols.keys())].rename(columns=stock_display_cols), hide_index=True, use_container_width=True)
-    elif not checked_rows.empty and latest_stock_df.empty:
-        st.warning("재고 현황을 보려면 재고 수집 작업이 실행되어야 합니다.")
+    checked_rows = edited_df[edited_df["재고 현황 보기"]]
 
+    # Define expander title and expansion state
+    if not checked_rows.empty:
+        selected_goods_name = checked_rows.iloc[-1]['goods_name']
+        expander_title = f"**'{selected_goods_name}'** 지점별 재고 현황"
+    else:
+        expander_title = "지점별 재고 현황"
+
+    with st.expander(expander_title, expanded=True):
+        if not checked_rows.empty:
+            if not latest_stock_df.empty:
+                selected_row = checked_rows.iloc[-1]
+                selected_event_id = selected_row['event_id']
+                stock_display_df = latest_stock_df[
+                    latest_stock_df['event_id'] == selected_event_id
+                ]
+                stock_display_cols = {"theater_name": "지점명", "status": "재고 상태"}
+                st.dataframe(stock_display_df[list(stock_display_cols.keys())].rename(columns=stock_display_cols), hide_index=True, use_container_width=True)
+            else:
+                st.warning("재고 현황을 보려면 재고 수집 작업이 실행되어야 합니다.")
+        else:
+            st.info('지점별 재고 현황을 확인하려면 현재 진행중인 굿즈 이벤트의 재고 보기를 클릭하세요.')
 
 
 def main():
