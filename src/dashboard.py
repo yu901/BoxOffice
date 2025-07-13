@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from src.boxoffice.logic.sqlite_connector import SQLiteConnector
 import altair as alt
+from src.boxoffice.logic.ai_agent import AIAgent
 
 st.set_page_config(layout="wide")
 
@@ -300,14 +301,65 @@ def show_goods_stock_dashboard(stock_df, events_df):
         else:
             st.info('지점별 재고 현황을 확인하려면 현재 진행중인 굿즈 이벤트의 재고 보기를 클릭하세요.')
 
+@st.cache_resource
+def get_ai_agent():
+    """AI 에이전트를 초기화하고 캐시합니다."""
+    try:
+        return AIAgent()
+    except ValueError as e:
+        st.error(e)
+        return None
+
+def show_ai_chat_dashboard():
+    """AI 챗봇 대시보드를 표시합니다."""
+    st.title("🤖 AI 영화 데이터 분석가")
+    st.info("영화 데이터에 대해 궁금한 점을 자유롭게 물어보세요! (예: '최근 7일간 가장 많은 관객을 동원한 영화 3개 알려줘', '범죄도시4의 누적 관객수는?')")
+
+    agent = get_ai_agent()
+    if not agent:
+        return
+
+    # 세션 상태에 채팅 기록 초기화
+    if "ai_messages" not in st.session_state:
+        st.session_state.ai_messages = []
+
+    # 이전 채팅 기록 표시
+    for message in st.session_state.ai_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if "sql" in message and message["sql"]:
+                with st.expander("실행된 SQL 쿼리 보기"):
+                    st.code(message["sql"], language="sql")
+
+    # 사용자 입력 처리
+    if prompt := st.chat_input("질문을 입력하세요..."):
+        # 사용자 메시지 표시 및 기록
+        st.chat_message("user").markdown(prompt)
+        st.session_state.ai_messages.append({"role": "user", "content": prompt})
+
+        # AI 응답 생성 및 표시
+        with st.chat_message("assistant"):
+            with st.spinner("답변을 생각하는 중..."):
+                response = agent.ask(prompt)
+                answer = response["answer"]
+                sql_query = response["sql_query"]
+                
+                st.markdown(answer)
+                with st.expander("실행된 SQL 쿼리 보기"):
+                    st.code(sql_query, language="sql")
+
+        # AI 응답 기록
+        st.session_state.ai_messages.append({"role": "assistant", "content": answer, "sql": sql_query})
 
 def main():
     boxoffice_df, stock_df, event_df = load_data()
 
     st.sidebar.title("대시보드 선택")
-    page = st.sidebar.radio("이동", ["박스오피스 개요", "일일 박스오피스", "굿즈 재고 현황"])
+    page = st.sidebar.radio("이동", ["AI 데이터 분석가", "박스오피스 개요", "일일 박스오피스", "굿즈 재고 현황"])
 
-    if page == "박스오피스 개요":
+    if page == "AI 데이터 분석가":
+        show_ai_chat_dashboard()
+    elif page == "박스오피스 개요":
         show_overall_boxoffice_dashboard(boxoffice_df)
     elif page == "일일 박스오피스":
         show_boxoffice_dashboard(boxoffice_df)

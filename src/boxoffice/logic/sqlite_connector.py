@@ -6,14 +6,20 @@ from src.boxoffice.logic.config import SQLiteConfig
 class SQLiteConnector:
     def __init__(self):
         self.config = SQLiteConfig()
-        self.engine = create_engine(f"sqlite:///{self.config.db_path}")
-        self.conn = sqlite3.connect(self.config.db_path)
+        self.db_path = self.config.db_path
+        self.engine = create_engine(f"sqlite:///{self.db_path}")
+
         self.create_tables()
 
-    def create_tables(self):
-        cursor = self.conn.cursor()
+    def _get_connection(self):
+        """새로운 sqlite3 커넥션을 생성하여 반환합니다."""
+        return sqlite3.connect(self.db_path)
 
-        cursor.execute("""
+    def create_tables(self):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS boxoffice (
                 rnum INTEGER, rank INTEGER, rankInten INTEGER, rankOldAndNew TEXT,
                 movieCd TEXT, movieNm TEXT, openDt DATE,
@@ -21,8 +27,8 @@ class SQLiteConnector:
                 audiCnt REAL, audiInten REAL, audiChange REAL, audiAcc REAL,
                 scrnCnt REAL, showCnt REAL, targetDt DATE, elapsedDt INTEGER
             );
-        """)
-        cursor.execute("""
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS movie (
                 movieCd TEXT, movieNm TEXT, movieNmEn TEXT,
                 prdtYear TEXT, openDt DATE, typeNm TEXT,
@@ -30,8 +36,8 @@ class SQLiteConnector:
                 repNationNm TEXT, repGenreNm TEXT,
                 directors TEXT, companys TEXT
             );
-        """)
-        cursor.execute("""
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS goods_event (
                 event_id TEXT PRIMARY KEY,
                 theater_chain TEXT,
@@ -44,8 +50,8 @@ class SQLiteConnector:
                 event_url TEXT,
                 image_url TEXT
             );
-        """)
-        cursor.execute("""
+            """)
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS goods_stock (
                 scraped_at DATETIME,
                 theater_name TEXT,
@@ -53,9 +59,11 @@ class SQLiteConnector:
                 status TEXT,
                 quantity TEXT
             );
-        """)
-        self.conn.commit()
-        cursor.close()
+            """)
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
 
     def insert_boxoffice(self, df):
         df.to_sql("boxoffice", self.engine, if_exists='append', index=False)
@@ -78,4 +86,8 @@ class SQLiteConnector:
         df.to_sql("movie", self.engine, if_exists='append', index=False)
 
     def select_query(self, query):
-        return pd.read_sql_query(query, self.conn)
+        conn = self._get_connection()
+        try:
+            return pd.read_sql_query(query, conn)
+        finally:
+            conn.close()

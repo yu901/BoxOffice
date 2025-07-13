@@ -32,4 +32,9 @@ class KobisConfig(BaseConfig):
 class SQLiteConfig(BaseConfig):
     def __init__(self):
         super().__init__()
-        self.db_path = os.path.join(self.config["sqlite"]["db_path"])
+        self.db_path = self.config["sqlite"]["db_path"]
+
+class GeminiConfig(BaseConfig):
+    def __init__(self):
+        super().__init__()
+        self.api_key = self.config["gemini"]["api_key"]
