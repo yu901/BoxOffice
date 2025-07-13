@@ -27,23 +27,9 @@ class BaseConfig:
 class KobisConfig(BaseConfig):
     def __init__(self):
         super().__init__()
-        storage = self.config["kobis"]
-        self.key = storage["key"]
-        self.data = storage["data"]
+        self.key = self.config["kobis"]["key"]
 
-class MysqlConfig(BaseConfig):
+class SQLiteConfig(BaseConfig):
     def __init__(self):
         super().__init__()
-        mysql = self.config["mysql"]
-        self.host = self.get_value(mysql, "host")
-        self.port = self.get_value(mysql, "port")
-        self.database = self.get_value(mysql, "database")
-        self.user = self.get_value(mysql, "user")
-        self.password = self.get_value(mysql, "password")
-    
-    def get_url(self):
-        return f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
-
-class SQLiteConfig:
-    def __init__(self):
-        self.db_path = os.path.join("./db/movie.sqlite")
+        self.db_path = os.path.join(self.config["sqlite"]["db_path"])

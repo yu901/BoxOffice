@@ -1,0 +1,5 @@
+kobis: 
+  key: YOUR_KOBIS_KEY
+
+sqlite: 
+  db_path: ./db/movie.sqlite
