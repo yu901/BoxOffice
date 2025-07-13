@@ -190,6 +190,11 @@ def show_goods_stock_dashboard(stock_df, events_df):
         st.info("현재 진행중인 굿즈 이벤트가 없습니다.")
         return
 
+    # 종료일이 지난 이벤트는 필터링합니다.
+    # errors='coerce'는 잘못된 날짜 형식을 NaT (Not a Time)으로 변환하여 오류를 방지합니다.
+    events_df['end_date_dt'] = pd.to_datetime(events_df['end_date'], errors='coerce')
+    events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now().normalize()]
+
     # --- 필터링 UI ---
     st.subheader("🔎 이벤트 필터")
     filter_cols = st.columns(2)
@@ -237,6 +242,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
             "event_title": None,
             "goods_id": None,
             "image_url": None,
+            "end_date_dt": None, # 내부 계산용 컬럼 숨기기
         },
         disabled=["theater_chain", "movie_title", "goods_name", "start_date", "end_date", "event_url"],
         hide_index=True,

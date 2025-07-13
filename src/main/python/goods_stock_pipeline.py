@@ -30,10 +30,23 @@ def get_all_events() -> List[UnifiedEvent]:
 
 @op(out=Out(List[Dict]))
 def get_events_from_db() -> List[Dict]:
-    """DB에 저장된 이벤트 목록을 가져옵니다."""
+    """DB에 저장된 이벤트 목록 중 종료되지 않은 이벤트만 가져옵니다."""
+    logger = get_dagster_logger()
     db = SQLiteConnector()
     events_df = db.select_query("SELECT * FROM goods_event")
-    return events_df.to_dict('records')
+
+    if events_df.empty:
+        logger.info("DB에 저장된 이벤트가 없습니다.")
+        return []
+
+    # 종료일이 지난 이벤트는 필터링합니다.
+    # errors='coerce'는 잘못된 날짜 형식을 NaT (Not a Time)으로 변환하여 오류를 방지합니다.
+    events_df['end_date_dt'] = pd.to_datetime(events_df['end_date'], errors='coerce')
+    active_events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now().normalize()].copy()
+    
+    logger.info(f"{len(active_events_df)}개의 이벤트를 대상으로 재고를 조회합니다.")
+    
+    return active_events_df.to_dict('records')
 
 @op(ins={"events": In(List[Dict])}, out=Out(List[Dict]))
 def get_all_stocks(events: List[Dict]) -> List[Dict]:
