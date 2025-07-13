@@ -1,10 +1,11 @@
 *.yml
 *.pyc
 *.env
-*.ipynb_checkpoints
 venv/*
 db/*
 airflow/*
 dagster/*
 !dagster/definition.py
 !dagster/dagster.yaml
+*.log
+.pids/
