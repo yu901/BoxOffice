@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
-from src.main.python.sqlite_connector import SQLiteConnector
-from src.main.python.movie_events_scraper import (
+from src.boxoffice.logic.sqlite_connector import SQLiteConnector
+from src.boxoffice.logic.movie_events_scraper import (
     CGVScraper,
     LotteCinemaScraper,
     MegaboxScraper,

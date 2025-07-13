@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from src.main.python.sqlite_connector import SQLiteConnector
+from src.boxoffice.logic.sqlite_connector import SQLiteConnector
 import altair as alt
 
 st.set_page_config(layout="wide")

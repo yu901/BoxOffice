@@ -1,5 +1,5 @@
 import pandas as pd
-from movie_events_scraper import (
+from src.boxoffice.logic.movie_events_scraper import (
     TheaterEventScraper,
     CGVScraper,
     LotteCinemaScraper,

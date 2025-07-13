@@ -2,8 +2,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from tqdm import tqdm
-from src.main.python.kobisdata_extractor import KobisDataExtractor
-from src.main.python.sqlite_connector import SQLiteConnector
+from src.boxoffice.logic.kobisdata_extractor import KobisDataExtractor
+from src.boxoffice.logic.sqlite_connector import SQLiteConnector
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
