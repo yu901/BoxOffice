@@ -1,6 +1,6 @@
 # BoxOffice Data-Pipeline & Dashboard
 
-이 프로젝트는 대한민국 영화 시장 데이터를 수집, 처리하고 시각화하는 데이터 파이프라인 및 대시보드입니다. 영화진흥위원회(KOBIS)의 Open API를 통해 일일 박스오피스 데이터를 수집하고, CGV, 롯데시네마, 메가박스 웹사이트에서 영화 굿즈 이벤트 및 재고 정보를 스크레이핑합니다. 수집된 데이터는 Dagster 파이프라인을 통해 처리되며, Streamlit으로 구축된 대시보드에서 상호작용하며 확인할 수 있습니다.
+이 프로젝트는 대한민국 영화 시장 데이터를 수집, 처리하고 시각화하는 데이터 파이프라인 및 대시보드입니다. 영화진흥위원회(KOBIS)의 Open API를 통해 일일 박스오피스 데이터를 수집하고, CGV, 롯데시네마, 메가박스 웹사이트에서 영화 굿즈 이벤트 및 재고 정보를 스크레이핑합니다. 수집된 데이터는 Dagster 파이프라인을 통해 처리되며, Streamlit으로 구축된 대시보드에서 상호작용하며 탐색할 수 있습니다.
 
 ## ✨ 주요 기능
 
@@ -9,9 +9,9 @@
 - **데이터 파이프라인 관리**: Dagster를 사용하여 데이터 수집 및 저장 파이프라인을 체계적으로 관리하고 모니터링합니다.
 - **데이터 영속성**: 수집된 모든 데이터는 로컬 SQLite 데이터베이스에 저장됩니다.
 - **인터랙티브 대시보드**: Streamlit 기반의 대시보드를 통해 다음 정보를 시각적으로 탐색할 수 있습니다.
-  - 일별 및 기간별 박스오피스 순위 및 흥행 추이
-  - 현재 진행 중인 영화 굿즈 이벤트 목록
-  - 각 이벤트별 굿즈의 실시간 지점별 재고 현황
+  - **AI 데이터 분석가**: Gemini API를 활용한 AI 챗봇을 통해 자연어로 영화 데이터를 질문하고 분석 결과를 얻을 수 있습니다.
+  - **박스오피스 분석**: 일별 및 기간별 박스오피스 순위와 흥행 추이를 시각적으로 분석합니다.
+  - **굿즈 재고 현황**: 현재 진행 중인 영화 굿즈 이벤트 목록과 각 이벤트별 굿즈의 실시간 지점별 재고를 확인합니다.
 - **편리한 실행 스크립트**: 셸 스크립트를 통해 애플리케이션 서비스를 손쉽게 시작하고 중지할 수 있습니다.
 
 ## 📂 프로젝트 구조
@@ -57,10 +57,11 @@ BoxOffice/
     pip install -r requirements.txt
     ```
 
-4.  **KOBIS API 키 설정**
-    프로젝트를 실행하려면 [영화진흥위원회(KOBIS) Open API](https://www.kobis.or.kr/kobisopenapi/homepg/main/main.do)에서 발급받은 API 키가 필요합니다.
+4.  **API 키 설정**
+    프로젝트의 모든 기능을 사용하려면 아래 두 가지 API 키가 필요합니다.
     -   `config/config.yml` 파일을 엽니다.
-    -   `YOUR_KOBIS_KEY` 값을 발급받은 API 키로 교체합니다.
+    -   **KOBIS API 키**: 영화진흥위원회(KOBIS) Open API에서 키를 발급받아 `kobis:` 섹션의 `key:` 값을 교체합니다.
+    -   **Gemini API 키**: Google AI Studio에서 키를 발급받아 `gemini:` 섹션의 `api_key:` 값을 교체합니다.
 
 ## 🏃‍♀️ 실행 방법
 
@@ -84,7 +85,7 @@ chmod +x scripts/*.sh
 ### 서비스 접속
 
 - **Dagster UI**: 웹 브라우저에서 `http://localhost:3000` 주소로 접속하세요.
-- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소로 접속하세요.
+- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소로 접속하여 'AI 데이터 분석가' 탭을 포함한 다양한 기능을 사용해 보세요.
 
 ### 서비스 중지
 
@@ -113,6 +114,7 @@ chmod +x scripts/*.sh
 ## 🛠️ 기술 스택
 
 - **Backend & Data Pipeline**: Python, Dagster
+- **AI & LLM**: Google Gemini API
 - **Dashboard**: Streamlit, Altair
 - **Data Handling**: Pandas, SQLAlchemy
 - **Database**: SQLite
