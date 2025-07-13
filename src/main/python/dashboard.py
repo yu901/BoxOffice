@@ -210,10 +210,18 @@ def show_goods_stock_dashboard(stock_df, events_df):
 
 
     st.subheader("🎟️ 현재 진행중인 굿즈 이벤트")
-    # 표시할 데이터프레임을 만들고 '재고 현황 보기' 체크박스 컬럼을 맨 앞에 추가합니다.
-    events_df_display = events_df.copy().reset_index(drop=True)
-    events_df_display.insert(0, "재고 현황 보기", False)
 
+    # --- Single-select checkbox logic ---
+    # 1. 세션 상태를 사용하여 단일 선택된 이벤트의 ID를 기억합니다.
+    if 'selected_event_id' not in st.session_state:
+        st.session_state.selected_event_id = None
+
+    # 2. 표시할 데이터프레임을 만들고, 세션 상태에 따라 체크박스 값을 설정합니다.
+    events_df_display = events_df.copy().reset_index(drop=True)
+    events_df_display['재고 현황 보기'] = (events_df_display['event_id'] == st.session_state.selected_event_id)
+    events_df_display.insert(0, "재고 현황 보기", events_df_display.pop('재고 현황 보기'))
+
+    # 3. data_editor를 렌더링합니다.
     edited_df = st.data_editor(
         events_df_display,
         column_config={
@@ -235,10 +243,35 @@ def show_goods_stock_dashboard(stock_df, events_df):
         column_order=("재고 현황 보기", "theater_chain", "movie_title", "goods_name", "start_date", "end_date", "event_url")
     )
 
-    # 체크된 행이 있는지 확인
-    checked_rows = edited_df[edited_df["재고 현황 보기"]]
+    # 4. 사용자 입력을 처리하고, 선택이 변경되면 세션 상태를 업데이트하고 UI를 새로고침합니다.
+    # 사용자가 data_editor와 상호작용한 후의 체크된 행들을 가져옵니다.
+    checked_rows_after_edit = edited_df[edited_df["재고 현황 보기"]]
+    
+    # 새로 선택된 ID를 결정합니다. (행 순서에 의존하지 않는 방식으로 개선)
+    newly_selected_id = None
+    checked_ids_after_edit = set(checked_rows_after_edit['event_id'])
+    current_id = st.session_state.selected_event_id
+
+    if not checked_ids_after_edit:
+        # 모든 체크박스가 해제된 경우
+        newly_selected_id = None
+    elif len(checked_ids_after_edit) == 1:
+        # 하나만 체크된 경우 (초기 선택 또는 이전 선택 해제 후 새 선택)
+        newly_selected_id = checked_ids_after_edit.pop()
+    else:  # 여러 개가 체크된 경우 (기존 선택 + 새로운 선택)
+        # 기존에 선택된 ID를 제외한 나머지(새로 선택된 ID)를 찾습니다.
+        new_ids = checked_ids_after_edit - {current_id}
+        if new_ids:
+            newly_selected_id = new_ids.pop()
+
+    if st.session_state.selected_event_id != newly_selected_id:
+        st.session_state.selected_event_id = newly_selected_id
+        st.rerun()
+
+    # --- End of logic ---
+
+    checked_rows = edited_df[edited_df["재고 현황 보기"]] # 이제 이 변수는 항상 최대 1개의 행만 가집니다.
     if not checked_rows.empty and not latest_stock_df.empty:
-        # 마지막으로 체크된 행 하나만 선택
         selected_row = checked_rows.iloc[-1]
         selected_event_id = selected_row['event_id']
         selected_goods_name = selected_row['goods_name']
