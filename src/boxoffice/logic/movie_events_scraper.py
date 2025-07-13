@@ -354,7 +354,8 @@ class MegaboxScraper(TheaterEventScraper):
             "currentPage": "1", "recordCountPerPage": "1000", "eventStatCd": "ONG",
             "eventTitle": "", "eventDivCd": "CED03", "eventTyCd": "", "orderReqCd": "ONGlist"
         }
-        try:
+        try:            
+            self.session.get("https://www.megabox.co.kr/event/movie")
             response = self.session.post(self.EVENT_LIST_URL, data=body)
             response.raise_for_status()
             response.encoding = 'utf-8'
