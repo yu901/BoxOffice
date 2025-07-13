@@ -45,7 +45,7 @@ def extract_kobis_data(context):
         logger.info("박스오피스 데이터가 최신 상태입니다. 수집을 건너뜁니다.")
 
     # 2. movie list
-    movie_df = extractor.get_MovieList(2025, 2025)
+    movie_df = extractor.get_MovieList(2025)
     logger.info(f"영화목록 수집 완료. {len(movie_df)}건")
 
     return boxoffice_df, movie_df
