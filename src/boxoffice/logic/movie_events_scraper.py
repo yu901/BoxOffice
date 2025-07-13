@@ -358,7 +358,7 @@ class MegaboxScraper(TheaterEventScraper):
             self.session.get("https://www.megabox.co.kr/event/movie")
             response = self.session.post(self.EVENT_LIST_URL, data=body)
             response.raise_for_status()
-            response.encoding = 'utf-8'
+            response.encoding = response.apparent_encoding  # 인코딩 자동 감지
             soup = BeautifulSoup(response.text, 'html.parser')
             event_tags = soup.select("div.event-list > div.item")
         except requests.RequestException as e:
@@ -382,12 +382,14 @@ class MegaboxScraper(TheaterEventScraper):
                 img_tag = link.find("img")
                 if not img_tag: continue
 
-                event_title = img_tag.get("alt", "").strip()
+                # 원본 alt 텍스트 (HTML entity 포함)
+                raw_goods_name = img_tag.get("alt", "").strip()
+                event_title = raw_goods_name  # 백업용 저장
                 image_url = img_tag.get("data-src")
 
                 period_tag = link.find("p", class_="date")
                 period = period_tag.get_text(strip=True) if period_tag else ""
-                
+
                 goods_info = self._get_goods_info_from_detail(event_no)
                 if not goods_info:
                     continue
@@ -395,19 +397,26 @@ class MegaboxScraper(TheaterEventScraper):
                 goods_name = html.unescape(goods_info["name"]).strip()
                 goods_id = goods_info["id"]
 
+                # 영화명 추출
                 movie_title = None
-                movie_match_goods = re.search(r'[<\[](.*?)[>\]]', goods_name)
+                unescaped_goods_name = html.unescape(raw_goods_name)
+                movie_match_goods = re.search(r'[<\[](.*?)[>\]]', unescaped_goods_name)
                 if movie_match_goods:
                     movie_title = movie_match_goods.group(1).strip()
-                
+
                 if not movie_title:
-                    movie_match_event = re.search(r'[<\[](.*?)[>\]]', event_title)
+                    unescaped_event_title = html.unescape(event_title)
+                    movie_match_event = re.search(r'[<\[](.*?)[>\]]', unescaped_event_title)
                     if movie_match_event:
                         movie_title = movie_match_event.group(1).strip()
 
+                # 굿즈명에서 영화명 제거
                 if movie_title:
-                    cleaned_goods_name = re.sub(r'\s*[<\[].*?[>\]]\s*', '', goods_name).strip()
-                    goods_name = cleaned_goods_name if cleaned_goods_name else re.sub(r'\s*[<\[].*?[>\]]\s*', '', event_title).strip()
+                    goods_name = re.sub(r'\s*[<\[].*?[>\]]\s*', '', unescaped_goods_name).strip()
+                    if not goods_name:
+                        goods_name = re.sub(r'\s*[<\[].*?[>\]]\s*', '', unescaped_event_title).strip()
+                else:
+                    goods_name = unescaped_goods_name
 
                 # 날짜 파싱
                 dates = [d.strip() for d in period.split('~')]
