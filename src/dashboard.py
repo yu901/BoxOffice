@@ -1,12 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 import streamlit as st
 import pandas as pd
 from src.boxoffice.logic.sqlite_connector import SQLiteConnector
 import altair as alt
 from src.boxoffice.logic.ai_agent import AIAgent
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 st.set_page_config(layout="wide")
 
