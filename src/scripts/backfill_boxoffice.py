@@ -25,20 +25,26 @@ def backfill_daily_boxoffice(start_date_str: str, end_date_str: str):
     end_dt = datetime.strptime(end_date_str, "%Y%m%d")
 
     # 1. 데이터베이스에서 기존 데이터 삭제 (Idempotency)
+    conn = None
     try:
         logger.info(f"DB에서 기존 데이터 삭제 중 ({start_date_str} ~ {end_date_str})...")
-        cursor = db.conn.cursor()
+        conn = db._get_connection()
+        cursor = conn.cursor()
         start_dt_sql_format = start_dt.strftime('%Y-%m-%d')
         end_dt_sql_format = end_dt.strftime('%Y-%m-%d')
         delete_query = f"DELETE FROM boxoffice WHERE date(targetDt) >= date('{start_dt_sql_format}') AND date(targetDt) <= date('{end_dt_sql_format}')"
         cursor.execute(delete_query)
-        db.conn.commit()
+        conn.commit()
         logger.info(f"기존 데이터 {cursor.rowcount}건 삭제 완료.")
         cursor.close()
     except Exception as e:
         logger.error(f"기존 데이터 삭제 중 오류 발생: {e}")
-        db.conn.rollback()
+        if conn:
+            conn.rollback()
         return
+    finally:
+        if conn:
+            conn.close()
 
     # 2. API에서 데이터 추출
     all_boxoffice_dfs = []
