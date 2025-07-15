@@ -28,6 +28,7 @@ class UnifiedEvent(TypedDict):
     # 내부 ID
     event_id: str
     goods_id: Optional[str]
+    spmtl_no: Optional[str]
 
 
 class UnifiedStock(TypedDict):
@@ -36,6 +37,7 @@ class UnifiedStock(TypedDict):
     theater_name: str
     status: str  # 예: '보유', '소진', '소진 임박', '준비중'
     quantity: Optional[Union[int, str]]
+    total_given_quantity: Optional[int]
 
 
 # --- 추상 베이스 클래스 ---
@@ -71,122 +73,170 @@ class CGVScraper(TheaterEventScraper):
 
     def __init__(self):
         super().__init__("CGV")
-        self.EVENT_LIST_URL = "https://m.cgv.co.kr/Event/GiveawayEventList.aspx/GetGiveawayEventList"
-        self.EVENT_DETAIL_URL = "https://m.cgv.co.kr/Event/GiveawayEventDetail.aspx/GetGiveawayEventDetail"
-        self.THEATER_STOCK_URL = "https://m.cgv.co.kr/Event/GiveawayEventDetail.aspx/GetGiveawayTheaterInfo"
+        self.EVENT_LIST_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtListForPage"
+        self.EVENT_DETAIL_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtProdList"
+        self.THEATER_STOCK_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtTgtsiteList"
+        self.session.headers.update({
+            "Referer": "https://cgv.co.kr/",
+            "Origin": "https://cgv.co.kr",
+        })
 
-    def _get_goods_idx(self, event_idx: str) -> Optional[str]:
-        """이벤트 ID로 굿즈 ID(GiveawayItemCode)를 조회합니다."""
+    def _get_goods_info(self, event_idx: str) -> Optional[Dict[str, str]]:
+        """이벤트 ID로 굿즈 정보(ID, 이름)를 조회합니다."""
         try:
-            body = {"eventIndex": event_idx, "giveawayIndex": None}
-            response = self.session.post(self.EVENT_DETAIL_URL, json=body)
+            params = {"coCd": "A420", "saprmEvntNo": event_idx}
+            response = self.session.get(self.EVENT_DETAIL_URL, params=params)
             response.raise_for_status()
             data = response.json()
-            items = data.get("d", {}).get("GiveawayItemList", [])
-            if items:
-                return items[0].get("GiveawayItemCode")
+            items = data.get("data", [])
+            if items and isinstance(items, list) and len(items) > 0:
+                return {
+                    "id": items[0].get("spmtlProdNo"),
+                    "name": items[0].get("spmtlProdNm"),
+                    "spmtlNo": items[0].get("spmtlNo")
+                }
         except requests.RequestException as e:
-            self.logger.error(f"굿즈 ID 조회 실패 (Event ID: {event_idx}): {e}")
+            self.logger.error(f"굿즈 정보 조회 실패 (Event ID: {event_idx}): {e}")
         except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"굿즈 ID 파싱 실패 (Event ID: {event_idx}): {e}")
+            self.logger.error(f"굿즈 정보 파싱 실패 (Event ID: {event_idx}): {e}")
         return None
 
     def get_events(self) -> List[UnifiedEvent]:
         self.logger.info("이벤트 목록 조회를 시작합니다.")
-        body = {"theaterCode": "", "pageNumber": "1", "pageSize": "100"}
-        try:
-            response = self.session.post(self.EVENT_LIST_URL, json=body)
-            response.raise_for_status()
-            data = response.json()
-            soup = BeautifulSoup(data['d']['List'], 'html.parser')
-            event_tags = soup.find_all("li")
-        except requests.RequestException as e:
-            self.logger.error(f"이벤트 목록 요청 실패: {e}")
-            return []
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"이벤트 목록 파싱 실패: {e}")
-            return []
-
         all_events = []
-        for tag in event_tags:
+        start_row = 0
+        list_count = 20
+        total_count = -1
+
+        while True:
+            if total_count != -1 and start_row >= total_count:
+                break
+
+            params = {
+                "coCd": "A420",
+                "siteNo": "",
+                "startRow": start_row,
+                "listCount": list_count
+            }
             try:
-                event_idx = tag['data-eventidx']
-                event_name = tag.find("strong").get_text(strip=True)
-                event_period = tag.find("span").get_text(strip=True)
-                image_url = tag.find("img")["src"] if tag.find("img") else None
+                response = self.session.get(self.EVENT_LIST_URL, params=params)
+                response.raise_for_status()
+                response_data = response.json()
+                data = response_data.get("data", {})
 
-                goods_idx = self._get_goods_idx(event_idx)
-                if not goods_idx:
-                    continue
+                if total_count == -1:
+                    total_count = data.get("totalCount", 0)
 
-                # 영화 제목 및 굿즈 이름 파싱
-                movie_match = re.match(r'\[(.*?)\]', event_name)
-                if movie_match:
-                    movie_title = movie_match.group(1).strip()
-                    goods_name = event_name[movie_match.end():].strip()
-                else:
-                    movie_title = event_name
-                    goods_name = event_name
+                event_list = data.get("list", [])
 
-                # 날짜 파싱
-                dates = [d.strip() for d in event_period.split('~')]
-                start_date = dates[0] if len(dates) > 0 else None
-                end_date = dates[1] if len(dates) > 1 else None
+                if not event_list:
+                    break
 
-                all_events.append(UnifiedEvent(
-                    theater_chain=self.chain_name,
-                    event_title=event_name,
-                    movie_title=movie_title,
-                    goods_name=goods_name,
-                    start_date=start_date,
-                    end_date=end_date,
-                    event_url=f"https://m.cgv.co.kr/Event/DetailView.aspx?Idx={event_idx}",
-                    image_url=image_url,
-                    event_id=event_idx,
-                    goods_id=goods_idx
-                ))
-            except (AttributeError, KeyError) as e:
-                self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {tag}, 오류: {e}")
-                continue
+                for event in event_list:
+                    try:
+                        event_idx = event.get("saprmEvntNo")
+                        if not event_idx:
+                            continue
+
+                        event_name = event.get("evntOnlnExpoNm") or event.get("saprmEvntNm")
+                        goods_info = self._get_goods_info(event_idx)
+                        
+                        goods_id = None
+                        goods_name = None
+                        spmtl_no = None
+                        if goods_info:
+                            goods_id = goods_info.get("id")
+                            goods_name = goods_info.get("name")
+                            spmtl_no = goods_info.get("spmtlNo")
+
+                        movie_title = None
+                        if event_name:
+                            match = re.search(r'[<\[](.*?)[>\]]', event_name)
+                            if match:
+                                movie_title = match.group(1).strip()
+
+                        all_events.append(UnifiedEvent(
+                            theater_chain=self.chain_name,
+                            event_title=event_name,
+                            movie_title=movie_title,
+                            goods_name=goods_name,
+                            start_date=event.get("evntStartYmd"),
+                            end_date=event.get("evntEndYmd"),
+                            event_url=f"https://cgv.co.kr/evt/giveawayStateDetail?saprmEvntNo={event_idx}",
+                            image_url=event.get("attchFilePathNm"),
+                            event_id=event_idx,
+                            goods_id=goods_id,
+                            spmtl_no=spmtl_no
+                        ))
+                    except (AttributeError, KeyError) as e:
+                        self.logger.warning(f"개별 이벤트 파싱 중 오류 발생: {event}, 오류: {e}")
+                        continue
+                
+                start_row += len(event_list)
+                if len(event_list) < list_count:
+                    break
+
+            except requests.RequestException as e:
+                self.logger.error(f"이벤트 목록 요청 실패: {e}")
+                break
+            except (json.JSONDecodeError, KeyError) as e:
+                self.logger.error(f"이벤트 목록 파싱 실패: {e}")
+                break
         
         self.logger.info(f"총 {len(all_events)}개의 이벤트를 조회했습니다.")
         return all_events
 
     def get_goods_stock(self, event: UnifiedEvent) -> List[UnifiedStock]:
-        goods_idx = event.get("goods_id")
-        if not goods_idx:
-            self.logger.warning("재고 조회를 위한 goods_id가 없습니다.")
+        event_id = event.get("event_id")
+        goods_id = event.get("goods_id")
+        spmtl_no = event.get("spmtl_no")
+
+        if not event_id or not goods_id or not spmtl_no:
+            self.logger.warning(f"재고 조회를 위한 event_id, goods_id, 또는 spmtl_no가 없습니다: event_id={event_id}, goods_id={goods_id}, spmtl_no={spmtl_no}")
             return []
 
-        self.logger.info(f"'{event['goods_name']}' 재고 조회를 시작합니다. (Goods ID: {goods_idx})")
+        self.logger.info(f"'{event.get('goods_name', 'N/A')}' 재고 조회를 시작합니다. (Event ID: {event_id}, Goods ID: {goods_id}, Spmtl No: {spmtl_no})")
         all_stocks = []
-        status_map = {
-            "type2": "보유", "type2.5": "소진 중", "type3": "소진 임박", "type4": "소진"
+        
+        params = {
+            "coCd": "A420",
+            "saprmEvntNo": event_id,
+            "saprmEvntProdNo": goods_id,
+            "spmtlNo": spmtl_no
         }
         
         try:
-            # 전체 지역 코드 가져오기
-            body = {"giveawayIndex": goods_idx, "areaCode": None}
-            response = self.session.post(self.THEATER_STOCK_URL, json=body)
+            response = self.session.get(self.THEATER_STOCK_URL, params=params)
             response.raise_for_status()
-            area_list = response.json().get("d", {}).get("AreaList", [])
+            data = response.json().get("data", [])
+            theaters = data if isinstance(data, list) else data.get("list", [])
 
-            # 지역별로 극장 재고 조회
-            for area in area_list:
-                area_code = area.get("AreaCode")
-                body = {"giveawayIndex": goods_idx, "areaCode": area_code}
-                response = self.session.post(self.THEATER_STOCK_URL, json=body)
-                response.raise_for_status()
-                theaters = response.json().get("d", {}).get("TheaterList", [])
+            for theater in theaters:
+                rl_invnt_qty = theater.get("rlInvntQty")
+                tot_pay_qty = theater.get("totPayQty")
+                fcfs_pay_yn = theater.get("fcfsPayYn")
+
+                status_standard = "알 수 없음"
+                quantity = None
+
+                if rl_invnt_qty is not None:
+                    if rl_invnt_qty > 0:
+                        status_standard = "보유"
+                        quantity = rl_invnt_qty
+                    elif rl_invnt_qty <= 0 and fcfs_pay_yn == "Y":
+                        status_standard = "소진 임박" # 선착순인데 재고가 없으면 소진 임박으로 간주
+                        quantity = 0
+                    else:
+                        status_standard = "소진"
+                        quantity = 0
                 
-                for theater in theaters:
-                    status_code = theater.get("CountTypeCode", "")
-                    all_stocks.append(UnifiedStock(
-                        theater_chain=self.chain_name,
-                        theater_name=theater.get("TheaterName", "알 수 없음"),
-                        status=status_map.get(status_code, status_code),
-                        quantity=None
-                    ))
+                all_stocks.append(UnifiedStock(
+                    theater_chain=self.chain_name,
+                    theater_name=theater.get("siteNm", "알 수 없음"),
+                    status=status_standard,
+                    quantity=quantity,
+                    total_given_quantity=tot_pay_qty
+                ))
         except requests.RequestException as e:
             self.logger.error(f"재고 조회 요청 실패: {e}")
         except (json.JSONDecodeError, KeyError) as e:

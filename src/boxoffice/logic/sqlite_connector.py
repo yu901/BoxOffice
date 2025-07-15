@@ -48,7 +48,9 @@ class SQLiteConnector:
                 start_date TEXT,
                 end_date TEXT,
                 event_url TEXT,
-                image_url TEXT
+                image_url TEXT,
+                spmtl_no TEXT,
+                total_given_quantity INTEGER
             );
             """)
             cursor.execute("""
@@ -57,9 +59,28 @@ class SQLiteConnector:
                 theater_name TEXT,
                 event_id TEXT,
                 status TEXT,
-                quantity TEXT
+                quantity TEXT,
+                total_given_quantity INTEGER
             );
             """)
+            # Add spmtl_no column to goods_event if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE goods_event ADD COLUMN spmtl_no TEXT;")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
+            # Add total_given_quantity column to goods_event if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE goods_event ADD COLUMN total_given_quantity INTEGER;")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
+            # Add total_given_quantity column to goods_stock if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE goods_stock ADD COLUMN total_given_quantity INTEGER;")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
             conn.commit()
         finally:
             cursor.close()
@@ -78,6 +99,7 @@ class SQLiteConnector:
         """굿즈 재고 정보를 DB에 저장합니다."""
         df.to_sql("goods_stock", self.engine, if_exists='append', index=False, dtype={
             'scraped_at': types.DateTime,
+            'total_given_quantity': types.INTEGER
         })
 
     def insert_movie(self, df):
