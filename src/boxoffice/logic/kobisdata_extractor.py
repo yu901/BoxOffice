@@ -3,7 +3,7 @@ import json
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
-from src.boxoffice.logic.config import KobisConfig
+from .config import KobisConfig
 
 kobis_config = KobisConfig()
 logger = logging.getLogger(__name__)

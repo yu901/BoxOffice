@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import pandas as pd
-from src.boxoffice.logic.sqlite_connector import SQLiteConnector
-from src.boxoffice.logic.config import GeminiConfig
+from .sqlite_connector import SQLiteConnector
+from .config import GeminiConfig
 import re
 import logging
 

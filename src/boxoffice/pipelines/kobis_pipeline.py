@@ -1,7 +1,7 @@
 from dagster import job, op, In, Out, get_dagster_logger, ScheduleDefinition
 from datetime import datetime, timedelta
-from src.boxoffice.logic.kobisdata_extractor import KobisDataExtractor
-from src.boxoffice.logic.sqlite_connector import SQLiteConnector
+from ..logic.kobisdata_extractor import KobisDataExtractor
+from ..logic.sqlite_connector import SQLiteConnector
 import pandas as pd
 
 @op(out={"boxoffice_df": Out(pd.DataFrame), "movie_df": Out(pd.DataFrame)})

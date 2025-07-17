@@ -1,7 +1,7 @@
 import sqlite3
 import pandas as pd
 from sqlalchemy import create_engine, types
-from src.boxoffice.logic.config import SQLiteConfig
+from .config import SQLiteConfig
 
 class SQLiteConnector:
     def __init__(self):

@@ -1,10 +1,10 @@
 from dagster import job, op, In, Out, get_dagster_logger, ScheduleDefinition
 from datetime import datetime
-from src.boxoffice.logic.sqlite_connector import SQLiteConnector
+from ..logic.sqlite_connector import SQLiteConnector
 import pandas as pd
 from typing import List, Dict
 
-from src.boxoffice.logic.movie_events_scraper import (
+from ..logic.movie_events_scraper import (
     CGVScraper,
     LotteCinemaScraper,
     MegaboxScraper,
