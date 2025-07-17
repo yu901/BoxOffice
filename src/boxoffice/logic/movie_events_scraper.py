@@ -154,14 +154,20 @@ class CGVScraper(TheaterEventScraper):
                             match = re.search(r'[<\[](.*?)[>\]]', event_name)
                             if match:
                                 movie_title = match.group(1).strip()
+                            goods_name = re.sub(r'\[.*?\]', '', event_name).strip()
 
+                        start_date_str = event.get("evntStartYmd")
+                        start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str                                                                    
+                        end_date_str = event.get("evntEndYmd")                                                                          
+                        end_date = f"{end_date_str[:4]}.{end_date_str[4:6]}.{end_date_str[6:]}" if end_date_str and len(end_date_str) == 8 else end_date_str                     
+                        
                         all_events.append(UnifiedEvent(
                             theater_chain=self.chain_name,
                             event_title=event_name,
                             movie_title=movie_title,
                             goods_name=goods_name,
-                            start_date=event.get("evntStartYmd"),
-                            end_date=event.get("evntEndYmd"),
+                            start_date=start_date,
+                            end_date=end_date,
                             event_url=f"https://cgv.co.kr/evt/giveawayStateDetail?saprmEvntNo={event_idx}",
                             image_url=event.get("attchFilePathNm"),
                             event_id=event_idx,
