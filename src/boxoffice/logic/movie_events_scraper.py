@@ -226,15 +226,15 @@ class CGVScraper(TheaterEventScraper):
                 quantity = None
 
                 if rl_invnt_qty is not None:
-                    if rl_invnt_qty > 0:
+                    if rl_invnt_qty > 40:
                         status_standard = "보유"
-                        quantity = rl_invnt_qty
-                    elif rl_invnt_qty <= 0 and fcfs_pay_yn == "Y":
-                        status_standard = "소진 임박" # 선착순인데 재고가 없으면 소진 임박으로 간주
-                        quantity = 0
-                    else:
+                    elif rl_invnt_qty > 10:
+                        status_standard = "소진중"
+                    elif rl_invnt_qty > 0:
+                        status_standard = "소량보유"
+                    else: # rl_invnt_qty <= 0
                         status_standard = "소진"
-                        quantity = 0
+                    quantity = rl_invnt_qty
                 
                 all_stocks.append(UnifiedStock(
                     theater_chain=self.chain_name,
@@ -361,8 +361,21 @@ class LotteCinemaScraper(TheaterEventScraper):
 
         all_stocks = []
         for theater in data["CinemaDivisionGoods"]:
-            quantity = theater.get("Cnt")
-            status = "보유" if int(quantity) > 0 else "소진"
+            quantity_str = theater.get("Cnt", "0")
+            try:
+                quantity = int(quantity_str)
+            except (ValueError, TypeError):
+                quantity = 0
+
+            status = "알 수 없음"
+            if quantity > 40:
+                status = "보유"
+            elif quantity > 10:
+                status = "소진중"
+            elif quantity > 0:
+                status = "소량보유"
+            else:
+                status = "소진"
             
             all_stocks.append(UnifiedStock(
                 theater_chain=self.chain_name,
