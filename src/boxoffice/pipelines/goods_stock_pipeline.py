@@ -66,9 +66,9 @@ def get_all_stocks(events: List[Dict]) -> List[Dict]:
             continue
         
         try:
-            logger.info(f"'{event['goods_name']}' 재고 조회 시작...")
+            logger.info(f"'{event.get('goods_name', 'N/A')}' 재고 조회 시작...")
             stocks = scraper.get_goods_stock(event)
-            logger.info(f"'{event['goods_name']}' 재고 {len(stocks)}건 조회 완료.")
+            logger.info(f"'{event.get('goods_name', 'N/A')}' 재고 {len(stocks)}건 조회 완료.")
             
             for stock in stocks:
                 enriched_stock = {
@@ -79,30 +79,76 @@ def get_all_stocks(events: List[Dict]) -> List[Dict]:
                 }
                 all_stocks_enriched.append(enriched_stock)
         except Exception as e:
-            logger.error(f"'{event['goods_name']}' 재고 조회 중 오류 발생: {e}", exc_info=True)
+            logger.error(f"'{event.get('goods_name', 'N/A')}' 재고 조회 중 오류 발생: {e}", exc_info=True)
 
     return all_stocks_enriched
 
 @op(ins={"events": In(List[Dict])})
 def save_events_to_db(events: List[Dict]):
-    """수집된 이벤트 정보를 데이터베이스에 저장합니다."""
+    """수집된 이벤트 정보를 데이터베이스에 저장하거나 업데이트합니다."""
     logger = get_dagster_logger()
     if not events:
         logger.info("저장할 이벤트 정보가 없습니다.")
         return
 
     db = SQLiteConnector()
-    new_events_df = pd.DataFrame(events)
-    
-    # DB에 이미 있는 event_id 조회
-    exist_events_df = db.select_query("SELECT event_id FROM goods_event")
-    exist_ids = set(exist_events_df["event_id"].unique())
-    
-    # 신규 이벤트만 필터링
-    final_events_to_insert = new_events_df[~new_events_df["event_id"].isin(exist_ids)]
+    conn = None
+    try:
+        conn = db._get_connection()
+        cursor = conn.cursor()
 
-    db.insert_goods_event(final_events_to_insert)
-    logger.info(f"총 {len(final_events_to_insert)}건의 신규 이벤트 정보를 DB에 저장했습니다.")
+        for event_data in events:
+            # UnifiedEvent의 모든 필드를 가져옵니다.
+            event_id = event_data.get("event_id")
+            theater_chain = event_data.get("theater_chain")
+            event_title = event_data.get("event_title")
+            movie_title = event_data.get("movie_title")
+            goods_name = event_data.get("goods_name")
+            goods_id = event_data.get("goods_id")
+            start_date = event_data.get("start_date")
+            end_date = event_data.get("end_date")
+            event_url = event_data.get("event_url")
+            image_url = event_data.get("image_url")
+            spmtl_no = event_data.get("spmtl_no")
+            total_given_quantity = event_data.get("total_given_quantity")
+
+            # INSERT OR UPDATE 쿼리 (UPSERT)
+            upsert_query = f"""
+                INSERT INTO goods_event (
+                    event_id, theater_chain, event_title, movie_title, goods_name,
+                    goods_id, start_date, end_date, event_url, image_url, spmtl_no, total_given_quantity
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id) DO UPDATE SET
+                    theater_chain = excluded.theater_chain,
+                    event_title = excluded.event_title,
+                    movie_title = excluded.movie_title,
+                    goods_name = excluded.goods_name,
+                    goods_id = excluded.goods_id,
+                    start_date = excluded.start_date,
+                    end_date = excluded.end_date,
+                    event_url = excluded.event_url,
+                    image_url = excluded.image_url,
+                    spmtl_no = excluded.spmtl_no,
+                    total_given_quantity = excluded.total_given_quantity
+                WHERE event_id = ?;
+            """
+            cursor.execute(upsert_query, (
+                event_id, theater_chain, event_title, movie_title, goods_name,
+                goods_id, start_date, end_date, event_url, image_url, spmtl_no, total_given_quantity,
+                event_id # ON CONFLICT DO UPDATE WHERE 절에 사용될 event_id
+            ))
+            logger.info(f"이벤트 저장/업데이트: {event_title} (ID: {event_id})")
+        
+        conn.commit()
+        logger.info(f"총 {len(events)}건의 이벤트 정보를 DB에 저장/업데이트했습니다.")
+
+    except Exception as e:
+        logger.error(f"이벤트 정보 저장/업데이트 중 오류 발생: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
 
 @op(ins={"stocks": In(List[Dict])})
 def save_stocks_to_db(stocks: List[Dict]):
