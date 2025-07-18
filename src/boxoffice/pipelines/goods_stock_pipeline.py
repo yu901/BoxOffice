@@ -76,6 +76,7 @@ def get_all_stocks(events: List[Dict]) -> List[Dict]:
                     "theater_name": stock["theater_name"],
                     "status": stock["status"],
                     "quantity": stock["quantity"],
+                    "total_quantity": stock.get("total_quantity")
                 }
                 all_stocks_enriched.append(enriched_stock)
         except Exception as e:
@@ -110,14 +111,13 @@ def save_events_to_db(events: List[Dict]):
             event_url = event_data.get("event_url")
             image_url = event_data.get("image_url")
             spmtl_no = event_data.get("spmtl_no")
-            total_given_quantity = event_data.get("total_given_quantity")
 
             # INSERT OR UPDATE 쿼리 (UPSERT)
             upsert_query = f"""
                 INSERT INTO goods_event (
                     event_id, theater_chain, event_title, movie_title, goods_name,
-                    goods_id, start_date, end_date, event_url, image_url, spmtl_no, total_given_quantity
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    goods_id, start_date, end_date, event_url, image_url, spmtl_no
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                     theater_chain = excluded.theater_chain,
                     event_title = excluded.event_title,
@@ -128,13 +128,12 @@ def save_events_to_db(events: List[Dict]):
                     end_date = excluded.end_date,
                     event_url = excluded.event_url,
                     image_url = excluded.image_url,
-                    spmtl_no = excluded.spmtl_no,
-                    total_given_quantity = excluded.total_given_quantity
+                    spmtl_no = excluded.spmtl_no
                 WHERE event_id = ?;
             """
             cursor.execute(upsert_query, (
                 event_id, theater_chain, event_title, movie_title, goods_name,
-                goods_id, start_date, end_date, event_url, image_url, spmtl_no, total_given_quantity,
+                goods_id, start_date, end_date, event_url, image_url, spmtl_no,
                 event_id # ON CONFLICT DO UPDATE WHERE 절에 사용될 event_id
             ))
             logger.info(f"이벤트 저장/업데이트: {event_title} (ID: {event_id})")

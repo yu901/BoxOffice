@@ -37,7 +37,7 @@ class UnifiedStock(TypedDict):
     theater_name: str
     status: str  # 예: '보유', '소진', '소진 임박', '준비중'
     quantity: Optional[Union[int, str]]
-    total_given_quantity: Optional[int]
+    total_quantity: Optional[int]
 
 
 # --- 추상 베이스 클래스 ---
@@ -241,7 +241,7 @@ class CGVScraper(TheaterEventScraper):
                     theater_name=theater.get("siteNm", "알 수 없음"),
                     status=status_standard,
                     quantity=quantity,
-                    total_given_quantity=tot_pay_qty
+                    total_quantity=tot_pay_qty
                 ))
         except requests.RequestException as e:
             self.logger.error(f"재고 조회 요청 실패: {e}")

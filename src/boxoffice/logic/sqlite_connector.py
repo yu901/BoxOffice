@@ -49,8 +49,7 @@ class SQLiteConnector:
                 end_date TEXT,
                 event_url TEXT,
                 image_url TEXT,
-                spmtl_no TEXT,
-                total_given_quantity INTEGER
+                spmtl_no TEXT
             );
             """)
             cursor.execute("""
@@ -59,7 +58,8 @@ class SQLiteConnector:
                 theater_name TEXT,
                 event_id TEXT,
                 status TEXT,
-                quantity TEXT
+                quantity TEXT,
+                total_quantity INTEGER
             );
             """)
             conn.commit()
