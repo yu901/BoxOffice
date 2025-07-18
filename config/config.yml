@@ -1,8 +1,0 @@
-kobis: 
-  key: YOUR_KOBIS_KEY
-
-gemini:
-  api_key: YOUR_GEMINI_API_KEY
-
-sqlite: 
-  db_path: ./db/movie.sqlite

@@ -1,22 +1,16 @@
 import os
-import yaml
+import toml
 
 class BaseConfig:
     def __init__(self):
         self.root_path = os.environ.get("ROOT_PATH", ".")
-        self.set_yml_path("/config/config.yml")
-        if not os.path.exists(self.yml_path):
-            encrypt_yml_path = "/config/config.yml"
-            print(f"{self.yml_path} does not exist. use {encrypt_yml_path}")
-            self.set_yml_path(encrypt_yml_path)
+        self.set_secrets_path("/.streamlit/secrets.toml")
 
-        with open(self.yml_path, "r", encoding="utf8") as f:
-            self.config = yaml.load(f, Loader=yaml.FullLoader)
+        with open(self.secrets_path, "r", encoding="utf8") as f:
+            self.config = toml.load(f)
 
-    def set_yml_path(self, yml_file_name):
-        config_path = os.environ.get("CONFIG_PATH", yml_file_name)
-        self.conf_dir = config_path
-        self.yml_path = self.root_path + self.conf_dir
+    def set_secrets_path(self, secrets_file_name):
+        self.secrets_path = self.root_path + secrets_file_name
 
     def get_value(self, obj, key):
         if key in obj:

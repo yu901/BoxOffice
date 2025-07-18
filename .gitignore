@@ -9,3 +9,7 @@ dagster/*
 !dagster/dagster.yaml
 *.log
 .pids/
+.devcontainer/
+.vscode/
+venv/
+.streamlit/secrets.toml
