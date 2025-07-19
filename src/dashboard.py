@@ -286,29 +286,77 @@ def show_goods_stock_dashboard(stock_df, events_df):
     else:
         expander_title = "지점별 재고 현황"
 
+    # CSS for the bordered and centered image container
+    custom_css = """
+    <style>
+        /* Force the container holding st.columns to be a flex container */
+        div[data-testid="stExpander"] > div > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] {
+            display: flex;
+            align-items: stretch; /* Make children stretch to fill height */
+        }
+
+        /* Apply border and centering to the image container */
+        .custom-image-wrapper {
+            border: 1px solid #ccc; /* Light gray border */
+            border-radius: 5px; /* Slightly rounded corners */
+            padding: 10px; /* Padding inside the border */
+            display: flex;
+            flex-direction: column; /* Allow content to stack if needed */
+            justify-content: center; /* Center vertically */
+            align-items: center; /* Center horizontally */
+            height: 100%; /* Make it take full height of its parent column */
+            min-height: 400px; /* Minimum height to match dataframe, adjust as needed */
+            overflow: hidden; /* Hide overflow if image is too big */
+        }
+        .custom-image-wrapper img {
+            width: 100%; /* Ensure image fills the width of its wrapper */
+            height: auto; /* Maintain aspect ratio */
+            max-height: 100%; /* But don't overflow vertically */
+            object-fit: contain; /* Still contain within the box */
+        }
+    </style>
+    """
+    st.markdown(custom_css, unsafe_allow_html=True)
+
     with st.expander(expander_title, expanded=True):
         if not checked_rows.empty:
             if not latest_stock_df.empty:
                 selected_row = checked_rows.iloc[-1]
                 selected_event_id = selected_row['event_id']
-                stock_display_df = latest_stock_df[
-                    latest_stock_df['event_id'] == selected_event_id
-                ]
-                stock_display_df = stock_display_df.sort_values(by='theater_name')
-                stock_display_cols = {"theater_name": "지점명", "status": "재고 상태"}
-                
-                # 재고 상태에 따라 색상을 적용하는 함수 (Series 전체에 적용)
-                def color_status(s: pd.Series) -> list[str]:
-                    color_map = {
-                        "보유": "#2ECC71",      # 초록색
-                        "소진중": "#F39C12",    # 주황색
-                        "소량보유": "#E74C3C",  # 빨강색
-                        "소진": "#95A5A6"       # 회색
-                    }
-                    return [f'color: {color_map.get(v, "black")}' for v in s]
+                selected_image_url = selected_row.get('image_url') # Get image_url
 
-                display_data = stock_display_df[list(stock_display_cols.keys())].rename(columns=stock_display_cols)
-                st.dataframe(display_data.style.apply(color_status, subset=['재고 상태']), hide_index=True, use_container_width=True)
+                # Display image and stock data side-by-side
+                col_img, col_table = st.columns([2, 3]) # Adjust column width ratio as needed
+
+                with col_img:
+                    if selected_image_url:
+                        st.markdown(f"""
+                            <div class="custom-image-wrapper">
+                                <img src="{selected_image_url}" alt="Event Image">
+                            </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("<div class=\"custom-image-wrapper\">이미지 없음</div>", unsafe_allow_html=True)
+
+                with col_table:
+                    stock_display_df = latest_stock_df[
+                        latest_stock_df['event_id'] == selected_event_id
+                    ]
+                    stock_display_df = stock_display_df.sort_values(by='theater_name')
+                    stock_display_cols = {"theater_name": "지점명", "status": "재고 상태"}
+                    
+                    # 재고 상태에 따라 색상을 적용하는 함수 (Series 전체에 적용)
+                    def color_status(s: pd.Series) -> list[str]:
+                        color_map = {
+                            "보유": "#2ECC71",      # 초록색
+                            "소진중": "#F39C12",    # 주황색
+                            "소량보유": "#E74C3C",  # 빨강색
+                            "소진": "#95A5A6"       # 회색
+                        }
+                        return [f'color: {color_map.get(v, "black")}' for v in s]
+
+                    display_data = stock_display_df[list(stock_display_cols.keys())].rename(columns=stock_display_cols)
+                    st.dataframe(display_data.style.apply(color_status, subset=['재고 상태']), hide_index=True, height=400, use_container_width=True)
             else:
                 st.warning("재고 현황을 보려면 재고 수집 작업이 실행되어야 합니다.")
         else:
