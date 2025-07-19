@@ -80,19 +80,37 @@ class KobisDataExtractor:
             return pd.DataFrame()
 
         movie_list = pd.concat(all_movies_for_year, ignore_index=True)
-        movie_list["directors"] = movie_list["directors"].apply(
-            lambda directors: [d.get("peopleNm") for d in directors if d.get("peopleNm")]
-        )
+        # Process directors
+        def process_directors(directors_list):
+            if isinstance(directors_list, list):
+                # Use ensure_ascii=False to store actual Korean characters
+                return json.dumps([d.get("peopleNm") for d in directors_list if d.get("peopleNm")] or [], ensure_ascii=False)
+            return "[]" # Default to empty JSON array if not a list
+
+        movie_list["directors"] = movie_list["directors"].apply(process_directors)
+
+        # Process companys
+        def process_companys(companys_list):
+            if isinstance(companys_list, list):
+                # Use ensure_ascii=False to store actual Korean characters
+                return json.dumps([{'companyCd': c.get('companyCd'), 'companyNm': c.get('companyNm')} for c in companys_list if c.get('companyCd') and c.get('companyNm')] or [], ensure_ascii=False)
+            return "[]" # Default to empty JSON array if not a list
+
+        movie_list["companys"] = movie_list["companys"].apply(process_companys)
+
         is_not_adult = movie_list["repGenreNm"] != "성인물(에로)"
         has_eng_title = movie_list["movieNmEn"].str.strip() != ""
-        has_directors = movie_list["directors"].apply(len) > 0
+        has_directors = movie_list["directors"].apply(lambda x: len(json.loads(x)) > 0 if x else False)
         movie_list = movie_list[is_not_adult & has_eng_title & has_directors].copy()
+
+        # openDt를 YYYY-MM-DD 형식의 문자열로 변환
+        movie_list["openDt"] = pd.to_datetime(movie_list["openDt"], errors='coerce').dt.strftime('%Y-%m-%d')
 
         col_types = {
             "movieCd": "str", "movieNm": "str", "movieNmEn": "str", "prdtYear": "str",
-            "openDt": "int", "typeNm": "str", "prdtStatNm": "str", "nationAlt": "str",
+            "openDt": "str", "typeNm": "str", "prdtStatNm": "str", "nationAlt": "str",
             "genreAlt": "str", "repNationNm": "str", "repGenreNm": "str",
-            "directors": "object", "companys": "object",
+            "directors": "str", "companys": "str",
         }
         movie_list = movie_list.astype(col_types)
         return movie_list

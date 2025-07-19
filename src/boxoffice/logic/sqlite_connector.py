@@ -83,8 +83,6 @@ class SQLiteConnector:
         })
 
     def insert_movie(self, df):
-        df["directors"] = df["directors"].astype(str)
-        df["companys"] = df["companys"].astype(str)
         df.to_sql("movie", self.engine, if_exists='append', index=False)
 
     def select_query(self, query):
