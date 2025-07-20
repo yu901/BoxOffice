@@ -69,14 +69,13 @@ class TheaterEventScraper(abc.ABC):
             SELECT movieNm FROM (
                 SELECT movieNm
                 FROM boxoffice
-                WHERE DATE(SUBSTR(targetDt, 1, 4) || '-' || SUBSTR(targetDt, 5, 2) || '-' || SUBSTR(targetDt, 7, 2)) >= DATE('now', '-7 days')
+                WHERE DATE(targetDt) >= DATE('now', '-1 days')
                 GROUP BY movieNm
-
                 UNION
-
                 SELECT movieNm
                 FROM movie
-                WHERE DATE(SUBSTR(openDt, 1, 4) || '-' || SUBSTR(openDt, 5, 2) || '-' || SUBSTR(openDt, 7, 2)) > DATE('now', '-1 day')
+                WHERE DATE(openDt) > DATE('now', '-1 day')
+                  AND DATE(openDt) < DATE('now', '7 day')
                   AND movieNm NOT IN (SELECT DISTINCT movieNm FROM boxoffice)
             )
         """
