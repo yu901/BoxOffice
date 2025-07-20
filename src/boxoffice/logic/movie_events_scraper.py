@@ -183,91 +183,96 @@ class CGVScraper(TheaterEventScraper):
         (https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage)
         """
         self.logger.info("CGV 영화 이벤트 목록 조회를 시작합니다.")
-        events = []
-        start_row = 0
-        list_count = 10
-        total_count = -1
-        
-        url = "https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage"
+        all_events = []
+        # "03": 영화, "01": SPECIAL
+        event_category_codes = ["03", "01"]
 
-        while True:
-            if total_count != -1 and start_row >= total_count:
-                break
+        for category_code in event_category_codes:
+            self.logger.info(f"CGV 이벤트 목록 조회를 시작합니다. (카테고리: {category_code})")
+            start_row = 0
+            list_count = 20
+            total_count = -1
+            
+            url = "https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage"
 
-            params = {
-                "coCd": "A420",
-                "evntCtgryLclsCd": "03",
-                "evntCtgryMclsCd": "031",
-                "sscnsChoiYn": "N",
-                "expnYn": "N",
-                "expoChnlCd": "01",
-                "startRow": start_row,
-                "listCount": list_count,
-            }
-            try:
-                response = self.session.get(url, params=params)
-                response.raise_for_status()
-                data = response.json().get("data", {})
-                
-                if total_count == -1:
-                    total_count = data.get("totalCount", 0)
-
-                event_list = data.get("list", [])
-                if not event_list:
+            while True:
+                if total_count != -1 and start_row >= total_count:
                     break
 
-                for item in event_list:
-                    event_no = item.get("evntNo")
-                    self.logger.debug(f"Processing movie event: {event_no}")
-                    event_name = item.get("evntNm")
+                params = {
+                    "coCd": "A420",
+                    "evntCtgryLclsCd": category_code,
+                    "sscnsChoiYn": "N",
+                    "expnYn": "N",
+                    "expoChnlCd": "01",
+                    "startRow": start_row,
+                    "listCount": list_count,
+                }
+                try:
+                    response = self.session.get(url, params=params)
+                    response.raise_for_status()
+                    data = response.json().get("data", {})
                     
-                    # movie_title 추출
-                    movie_title = None
-                    match = re.search(r'[<\[](.*?)[>\]]', event_name)
-                    if match:
-                        movie_title = self._normalize_movie_title(match.group(1).strip())
+                    if total_count == -1:
+                        total_count = data.get("totalCount", 0)
 
-                    # 날짜 형식 변환
-                    start_date_str = item.get("evntStartDt", "").split(" ")[0].replace("-", "")
-                    end_date_str = item.get("evntEndDt", "").split(" ")[0].replace("-", "")
-                    start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str
-                    end_date = f"{end_date_str[:4]}.{end_date_str[4:6]}.{end_date_str[6:]}" if end_date_str and len(end_date_str) == 8 else end_date_str
+                    event_list = data.get("list", [])
+                    if not event_list:
+                        break
 
-                    # 이미지 URL 조합
-                    image_path = item.get("lagBanrPhyscFilePathnm", "")
-                    image_file = item.get("lagBanrPhyscFnm", "")
-                    image_url = f"https://cdn.cgv.co.kr/{image_path}/{image_file}" if image_path and image_file else None
+                    for item in event_list:
+                        event_no = item.get("evntNo")
+                        self.logger.debug(f"Processing movie event: {event_no}")
+                        event_name = item.get("evntNm")
+                        
+                        # movie_title 추출
+                        movie_title = None
+                        match = re.search(r'[<\[](.*?)[>\]]', event_name)
+                        if match:
+                            movie_title = self._normalize_movie_title(match.group(1).strip())
+
+                        # 날짜 형식 변환
+                        start_date_str = item.get("evntStartDt", "").split(" ")[0].replace("-", "")
+                        end_date_str = item.get("evntEndDt", "").split(" ")[0].replace("-", "")
+                        start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str
+                        end_date = f"{end_date_str[:4]}.{end_date_str[4:6]}.{end_date_str[6:]}" if end_date_str and len(end_date_str) == 8 else end_date_str
+
+                        # 이미지 URL 조합
+                        image_path = item.get("lagBanrPhyscFilePathnm", "")
+                        image_file = item.get("lagBanrPhyscFnm", "")
+                        image_url = f"https://cdn.cgv.co.kr/{image_path}/{image_file}" if image_path and image_file else None
+                        
+                        # 이벤트 URL 조합
+                        event_url = f"https://cgv.co.kr/evt/eventDetail?evntNo={event_no}&expnYn=N"
+
+                        all_events.append(UnifiedEvent(
+                            theater_chain=self.chain_name,
+                            event_title=event_name,
+                            movie_title=movie_title,
+                            goods_name=None, # 이 API는 굿즈 정보를 직접 제공하지 않음
+                            start_date=start_date,
+                            end_date=end_date,
+                            event_url=event_url,
+                            image_url=image_url,
+                            event_id=event_no,
+                            goods_id=None,
+                            spmtl_no=None
+                        ))
                     
-                    # 이벤트 URL 조합
-                    event_url = f"https://cgv.co.kr/evt/eventDetail?evntNo={event_no}&expnYn=N"
+                    start_row += len(event_list)
+                    if len(event_list) < list_count:
+                        break
 
-                    events.append(UnifiedEvent(
-                        theater_chain=self.chain_name,
-                        event_title=event_name,
-                        movie_title=movie_title,
-                        goods_name=None, # 이 API는 굿즈 정보를 직접 제공하지 않음
-                        start_date=start_date,
-                        end_date=end_date,
-                        event_url=event_url,
-                        image_url=image_url,
-                        event_id=event_no,
-                        goods_id=None,
-                        spmtl_no=None
-                    ))
-                
-                start_row += len(event_list)
-                if len(event_list) < list_count:
+                except requests.RequestException as e:
+                    self.logger.error(f"CGV 영화 이벤트 목록 요청 실패 (카테고리: {category_code}): {e}")
                     break
-
-            except requests.RequestException as e:
-                self.logger.error(f"CGV 영화 이벤트 목록 요청 실패: {e}")
-                break
-            except (json.JSONDecodeError, KeyError) as e:
-                self.logger.error(f"CGV 영화 이벤트 목록 파싱 실패: {e}")
-                break
-        
-        self.logger.info(f"총 {len(events)}개의 CGV 영화 이벤트를 조회했습니다.")
-        return events
+                except (json.JSONDecodeError, KeyError) as e:
+                    self.logger.error(f"CGV 영화 이벤트 목록 파싱 실패 (카테고리: {category_code}): {e}")
+                    break
+    
+        self.logger.info(f"총 {len(all_events)}개의 CGV 영화 이벤트를 조회했습니다.")
+        # pd.DataFrame(all_events).to_csv("cgv_movie_events.csv", index=False)
+        return all_events
 
     def get_events(self) -> List[UnifiedEvent]:
         # 1. 두 종류의 이벤트 목록을 가져옵니다.
