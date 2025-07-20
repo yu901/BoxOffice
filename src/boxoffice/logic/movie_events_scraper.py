@@ -56,25 +56,30 @@ class TheaterEventScraper(abc.ABC):
     def _normalize_movie_title(self, title: str) -> str:
         """영화 제목을 정규화합니다."""
         # 괄호 안의 내용 제거 (예: [퀴어], <판타스틱4>)
-        title = re.sub(r'[<\\[].*?[>\\]]', '', title)
+        title = re.sub(r'[<\[].*?[>\]]', '', title)
         # 특수문자 제거 및 공백 정규화 (한글, 영어, 숫자, 공백만 허용)
-        title = re.sub(r'[^가-힣a-zA-Z0-9\\s]', '', title)
-        title = re.sub(r'\\s+', ' ', title).strip()
+        title = re.sub(r'[^가-힣a-zA-Z0-9\s]', '', title)
+        title = re.sub(r'\s+', ' ', title).strip()
 
         # movie 테이블에서 원본 영화명 조회
-        # 최대한 정확한 매칭을 위해 LIKE 대신 정확한 매칭을 시도하고, 없으면 LIKE로 대체
         # 공백, 콜론, 언더스코어를 제거하여 비교
         cleaned_title = title.replace(' ', '').replace(':', '').replace('_', '')
+
+        if not cleaned_title:
+            return title
+
+        # 1. Cleaned title로 부분 일치 검색 (가장 정확도 높을 것으로 기대)
         query = f"""
             SELECT movieNm FROM movie
-            WHERE REPLACE(REPLACE(REPLACE(movieNm, ' ', ''), ':', ''), '_', '') = '{cleaned_title}'
+            WHERE REPLACE(REPLACE(REPLACE(movieNm, ' ', ''), ':', ''), '_', '') LIKE '%{cleaned_title}%'
+            ORDER BY LENGTH(movieNm) ASC
             LIMIT 1
         """
         df = self.db_connector.select_query(query)
         if not df.empty:
             return df['movieNm'].iloc[0]
-        
-        # 정확한 매칭이 없으면, 부분 매칭으로 다시 시도
+
+        # 2. 원래 title로 부분 일치 검색 (차선책)
         query = f"""
             SELECT movieNm FROM movie
             WHERE movieNm LIKE '%{title}%'
@@ -84,7 +89,7 @@ class TheaterEventScraper(abc.ABC):
         df = self.db_connector.select_query(query)
         if not df.empty:
             return df['movieNm'].iloc[0]
-        
+
         # 기타 정규화 규칙 추가 (최후의 수단)
         return title
 
