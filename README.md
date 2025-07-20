@@ -63,9 +63,20 @@ BoxOffice/
 
 4.  **API 키 설정**
     프로젝트의 모든 기능을 사용하려면 아래 두 가지 API 키가 필요합니다.
-    -   `config/config.yml` 파일을 엽니다.
-    -   **KOBIS API 키**: 영화진흥위원회(KOBIS) Open API에서 키를 발급받아 `kobis:` 섹션의 `key:` 값을 교체합니다.
-    -   **Gemini API 키**: Google AI Studio에서 키를 발급받아 `gemini:` 섹션의 `api_key:` 값을 교체합니다.
+    `.streamlit/secrets.toml` 파일을 생성하고 다음 형식으로 API 키를 추가합니다.
+    (이 파일은 `.gitignore`에 추가되어야 합니다.)
+
+    ```toml
+    # .streamlit/secrets.toml
+    [kobis]
+    key = "YOUR_KOBIS_API_KEY"
+
+    [gemini]
+    api_key = "YOUR_GEMINI_API_KEY"
+    ```
+
+    -   **KOBIS API 키**: 영화진흥위원회(KOBIS) Open API에서 키를 발급받아 `YOUR_KOBIS_API_KEY`를 교체합니다.
+    -   **Gemini API 키**: Google AI Studio에서 키를 발급받아 `YOUR_GEMINI_API_KEY`를 교체합니다.
 
 ## 🏃‍♀️ 실행 방법
 
