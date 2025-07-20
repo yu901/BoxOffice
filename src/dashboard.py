@@ -208,7 +208,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
         events_df = events_df[events_df['theater_chain'] == selected_theater]
 
     # 2. 영화 필터
-    movie_options = ["전체"] + events_df['movie_title'].dropna().unique().tolist()
+    movie_options = ["전체"] + sorted(events_df['movie_title'].dropna().unique().tolist())
     selected_movie = filter_cols[1].selectbox("영화 선택", options=movie_options)
 
     if selected_movie != "전체":
@@ -223,7 +223,11 @@ def show_goods_stock_dashboard(stock_df, events_df):
         st.session_state.selected_event_id = None
 
     # 2. 표시할 데이터프레임을 만들고, 세션 상태에 따라 체크박스 값을 설정합니다.
-    events_df_display = events_df.copy().reset_index(drop=True)
+    required_cols = [
+        "theater_chain", "movie_title", "goods_name", "start_date", "end_date", "event_url",
+        "event_id", "event_title", "image_url"
+    ]
+    events_df_display = events_df[required_cols].copy().reset_index(drop=True)
     events_df_display['재고 현황 보기'] = (events_df_display['event_id'] == st.session_state.selected_event_id)
     events_df_display.insert(0, "재고 현황 보기", events_df_display.pop('재고 현황 보기'))
 
