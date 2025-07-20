@@ -61,36 +61,71 @@ class TheaterEventScraper(abc.ABC):
         title = re.sub(r'[^가-힣a-zA-Z0-9\s]', '', title)
         title = re.sub(r'\s+', ' ', title).strip()
 
-        # movie 테이블에서 원본 영화명 조회
-        # 공백, 콜론, 언더스코어를 제거하여 비교
+        if not title:
+            return ""
+
+        # 1. DB에서 최근/개봉예정 영화 후보 목록을 가져옵니다.
+        query1 = """
+            SELECT movieNm FROM (
+                SELECT movieNm
+                FROM boxoffice
+                WHERE DATE(SUBSTR(targetDt, 1, 4) || '-' || SUBSTR(targetDt, 5, 2) || '-' || SUBSTR(targetDt, 7, 2)) >= DATE('now', '-7 days')
+                GROUP BY movieNm
+
+                UNION
+
+                SELECT movieNm
+                FROM movie
+                WHERE DATE(SUBSTR(openDt, 1, 4) || '-' || SUBSTR(openDt, 5, 2) || '-' || SUBSTR(openDt, 7, 2)) > DATE('now', '-1 day')
+                  AND movieNm NOT IN (SELECT DISTINCT movieNm FROM boxoffice)
+            )
+        """
+        df1 = self.db_connector.select_query(query1)
+        candidate_movies = df1['movieNm'].tolist() if not df1.empty else []
+
+        # 2. 후보 목록에서 매칭되는 영화를 찾습니다.
         cleaned_title = title.replace(' ', '').replace(':', '').replace('_', '')
+        
+        def find_best_match(candidates, clean_input):
+            found_matches = []
+            for movie in candidates:
+                cleaned_movie = movie.replace(' ', '').replace(':', '').replace('_', '')
+                if clean_input in cleaned_movie:
+                    # 길이 차이를 계산하여 유사도 점수로 활용
+                    similarity = len(cleaned_movie) - len(clean_input)
+                    found_matches.append((movie, similarity))
+            
+            if found_matches:
+                # 유사도(길이 차이)가 가장 작은 순으로 정렬
+                found_matches.sort(key=lambda x: x[1])
+                return found_matches[0][0]
+            return None
 
-        if not cleaned_title:
-            return title
+        best_match = find_best_match(candidate_movies, cleaned_title)
+        if best_match:
+            return best_match
 
-        # 1. Cleaned title로 부분 일치 검색 (가장 정확도 높을 것으로 기대)
-        query = f"""
-            SELECT movieNm FROM movie
-            WHERE REPLACE(REPLACE(REPLACE(movieNm, ' ', ''), ':', ''), '_', '') LIKE '%{cleaned_title}%'
-            ORDER BY LENGTH(movieNm) ASC
-            LIMIT 1
-        """
-        df = self.db_connector.select_query(query)
-        if not df.empty:
-            return df['movieNm'].iloc[0]
+        # 3. 최근 목록에 없으면 전체 movie 테이블에서 다시 검색합니다.
+        self.logger.info(f"'{title}'을(를) 최근/개봉예정 목록에서 찾지 못했습니다. 전체 DB를 검색합니다.")
+        query2 = "SELECT movieNm FROM movie"
+        df2 = self.db_connector.select_query(query2)
+        all_movies = df2['movieNm'].tolist() if not df2.empty else []
 
-        # 2. 원래 title로 부분 일치 검색 (차선책)
-        query = f"""
-            SELECT movieNm FROM movie
-            WHERE movieNm LIKE '%{title}%'
-            ORDER BY LENGTH(movieNm) ASC
-            LIMIT 1
-        """
-        df = self.db_connector.select_query(query)
-        if not df.empty:
-            return df['movieNm'].iloc[0]
+        best_match_from_all = find_best_match(all_movies, cleaned_title)
+        if best_match_from_all:
+            return best_match_from_all
 
-        # 기타 정규화 규칙 추가 (최후의 수단)
+        # 4. 그래도 없으면 원본 제목으로 마지막 검색을 시도합니다.
+        fallback_matches = []
+        for movie in all_movies:
+            if title in movie:
+                fallback_matches.append(movie)
+
+        if fallback_matches:
+            fallback_matches.sort(key=len)
+            return fallback_matches[0]
+
+        # 5. 최종적으로 매칭되는 영화가 없을 경우, 원래 제목 반환
         return title
 
     @abc.abstractmethod
