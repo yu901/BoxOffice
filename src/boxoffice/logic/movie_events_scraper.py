@@ -147,6 +147,17 @@ class TheaterEventScraper(abc.ABC):
 class CGVScraper(TheaterEventScraper):
     """CGV 이벤트 및 재고 스크레이퍼"""
 
+    # 굿즈 이름 정규화 맵
+    GOODS_NORMALIZATION_MAP = {
+        "TTT": "TTT",
+        "SCREENX 와이드 포스터": ["SCREENX 와이드 포스터", "SX 와이드 포스터", "SX 와이드포스터"],
+        "SCREENX 포스터": ["SCREENX 포스터", "SX 포스터", "SX포스터"],
+        "ULTRA 4DX 모먼트라벨": ["ULTRA 4DX 모먼트라벨", "ULTRA4DX모먼트라벨", "4DX MOMENT LABEL & TAG"],
+        "IMAX 포스터": ["IMAX 포스터", "IMAX포스터"],
+        "4DX 포스터": ["4DX 포스터"],
+        # 여기에 추가적인 정규화 규칙을 정의할 수 있습니다.
+    }
+
     def __init__(self):
         super().__init__("CGV")
         self.EVENT_LIST_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtListForPage"
@@ -156,6 +167,25 @@ class CGVScraper(TheaterEventScraper):
             "Referer": "https://cgv.co.kr/",
             "Origin": "https://cgv.co.kr",
         })
+
+    def _normalize_goods_name(self, goods_name: str) -> str:
+        """굿즈 이름을 정규화합니다."""
+        if not goods_name:
+            return ""
+        
+        cleaned_goods_name = goods_name.strip()
+        
+        for standard_name, aliases in self.GOODS_NORMALIZATION_MAP.items():
+            if cleaned_goods_name == standard_name:
+                return standard_name
+            if isinstance(aliases, list):
+                for alias in aliases:
+                    if cleaned_goods_name == alias:
+                        return standard_name
+            elif cleaned_goods_name == aliases:
+                return standard_name
+        
+        return goods_name # 매칭되는 것이 없으면 원본 이름 반환
 
     def _get_goods_info(self, event_idx: str) -> Optional[Dict[str, str]]:
         """이벤트 ID로 굿즈 정보(ID, 이름)를 조회합니다."""
@@ -249,7 +279,7 @@ class CGVScraper(TheaterEventScraper):
                             theater_chain=self.chain_name,
                             event_title=event_name,
                             movie_title=movie_title,
-                            goods_name=None, # 이 API는 굿즈 정보를 직접 제공하지 않음
+                            goods_name=self._normalize_goods_name(re.sub(r'\[.*?\]', '', event_name).strip()),    
                             start_date=start_date,
                             end_date=end_date,
                             event_url=event_url,
@@ -271,46 +301,70 @@ class CGVScraper(TheaterEventScraper):
                     break
     
         self.logger.info(f"총 {len(all_events)}개의 CGV 영화 이벤트를 조회했습니다.")
-        # pd.DataFrame(all_events).to_csv("cgv_movie_events.csv", index=False)
+        pd.DataFrame(all_events).to_csv("cgv_movie_events.csv", index=False)
         return all_events
 
     def get_events(self) -> List[UnifiedEvent]:
-        # 1. 두 종류의 이벤트 목록을 가져옵니다.
+        # 1. 기본이 되는 굿즈 이벤트와, 정보를 보강할 영화/일반 이벤트를 가져옵니다.
         goods_events = self._get_goods_events()
         movie_events = self._get_movie_events()
 
-        # 2. 굿즈 이벤트를 기반으로 이벤트 딕셔너리를 생성합니다.
-        #    (movie_title, start_date, end_date)를 고유 키로 사용합니다.
-        events_dict = {}
-        for event in goods_events:
-            if event.get("movie_title") and event.get("start_date") and event.get("end_date"):
-                key = (event["movie_title"], event["start_date"], event["end_date"])
-                events_dict[key] = event
+        # 2. 영화/일반 이벤트를 빠르게 조회할 수 있도록 두 가지 키로 딕셔너리를 생성합니다.
+        #    (movie_title, goods_name) 키와 (movie_title, start_date, end_date) 키
+        movie_events_by_goods_key = {}
+        movie_events_by_date_key = {}
 
-        # 3. 영화 이벤트 목록을 순회하며 딕셔너리를 업데이트합니다.
         for event in movie_events:
-            if event.get("movie_title") and event.get("start_date") and event.get("end_date"):
-                key = (event["movie_title"], event["start_date"], event["end_date"])
-                if key in events_dict:
-                    # 키가 이미 존재하면, 기존 이벤트에 새로운 정보를 업데이트합니다.
-                    existing_event = events_dict[key]
-                    
-                    # 더 상세한 URL로 업데이트
-                    if "giveawayStateDetail" not in event["event_url"]:
-                        existing_event["event_url"] = event["event_url"]
-                    
-                    # 이미지 URL이 없는 경우 업데이트
-                    if not existing_event.get("image_url") and event.get("image_url"):
-                        existing_event["image_url"] = event["image_url"]
-                        
-                    # event_title이 더 구체적인 경우 업데이트
-                    if len(event["event_title"]) > len(existing_event["event_title"]):
-                        existing_event["event_title"] = event["event_title"]
+            # 굿즈 키 생성
+            goods_key_identifier = event.get("movie_title") or event.get("goods_name")
+            if goods_key_identifier and event.get("goods_name"):
+                goods_key = (goods_key_identifier, event["goods_name"])
+                movie_events_by_goods_key[goods_key] = event
 
-        # 4. 딕셔너리의 값들을 리스트로 변환하여 최종 결과를 반환합니다.
-        all_events = list(events_dict.values())
-        self.logger.info(f"총 {len(all_events)}개의 통합된 이벤트를 조회했습니다.")
-        return all_events
+            # 날짜 키 생성
+            date_key_identifier = event.get("movie_title") or event.get("goods_name")
+            if date_key_identifier and event.get("start_date") and event.get("end_date"):
+                date_key = (date_key_identifier, event["start_date"], event["end_date"])
+                movie_events_by_date_key[date_key] = event
+
+        # 3. 굿즈 이벤트를 순회하며, 매칭되는 영화/일반 이벤트의 정보로 업데이트합니다.
+        for goods_event in goods_events:
+            updated = False
+
+            # 3-1. 1차 시도: movie_title과 goods_name 조합으로 매칭
+            goods_key_identifier = goods_event.get("movie_title") or goods_event.get("goods_name")
+            if goods_key_identifier and goods_event.get("goods_name"):
+                goods_key = (goods_key_identifier, goods_event["goods_name"])
+                matching_movie_event = movie_events_by_goods_key.get(goods_key)
+                
+                if matching_movie_event:
+                    if matching_movie_event.get("event_url"):
+                        goods_event["event_url"] = matching_movie_event["event_url"]
+                    if not goods_event.get("image_url") and matching_movie_event.get("image_url"):
+                        goods_event["image_url"] = matching_movie_event["image_url"]
+                    updated = True
+                    # 사용된 movie_event는 다른 goods_event와 중복 매칭되지 않도록 제거
+                    # (movie_events_by_date_key에서도 제거해야 함)
+                    date_key_for_removal = (goods_key_identifier, matching_movie_event.get("start_date"), matching_movie_event.get("end_date"))
+                    if date_key_for_removal in movie_events_by_date_key:
+                        del movie_events_by_date_key[date_key_for_removal]
+
+            # 3-2. 2차 시도: 1차 시도에서 업데이트되지 않았고, movie_title, start_date, end_date 조합으로 매칭
+            if not updated:
+                date_key_identifier = goods_event.get("movie_title") or goods_event.get("goods_name")
+                if date_key_identifier and goods_event.get("start_date") and goods_event.get("end_date"):
+                    date_key = (date_key_identifier, goods_event["start_date"], goods_event["end_date"])
+                    matching_movie_event = movie_events_by_date_key.get(date_key)
+                    
+                    if matching_movie_event:
+                        if matching_movie_event.get("event_url"):
+                            goods_event["event_url"] = matching_movie_event["event_url"]
+                        if not goods_event.get("image_url") and matching_movie_event.get("image_url"):
+                            goods_event["image_url"] = matching_movie_event["image_url"]
+
+        # 4. 업데이트된 굿즈 이벤트 목록을 최종 결과로 반환합니다.
+        self.logger.info(f"총 {len(goods_events)}개의 통합된 이벤트를 조회했습니다.")
+        return goods_events
 
     def _get_goods_events(self) -> List[UnifiedEvent]:
         self.logger.info("CGV 굿즈 이벤트 목록 조회를 시작합니다.")
@@ -357,7 +411,7 @@ class CGVScraper(TheaterEventScraper):
                         spmtl_no = None
                         if goods_info:
                             goods_id = goods_info.get("id")
-                            goods_name = goods_info.get("name")
+                            goods_name = self._normalize_goods_name(goods_info.get("name"))
                             spmtl_no = goods_info.get("spmtlNo")
 
                         movie_title = None
@@ -365,7 +419,7 @@ class CGVScraper(TheaterEventScraper):
                             match = re.search(r'[<\[](.*?)[>\]]', event_name)
                             if match:
                                 movie_title = self._normalize_movie_title(match.group(1).strip())
-                            goods_name = re.sub(r'\[.*?\]', '', event_name).strip()
+                            goods_name = self._normalize_goods_name(re.sub(r'\[.*?\]', '', event_name).strip())
 
                         start_date_str = event.get("evntStartYmd")
                         start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str                                                                    
