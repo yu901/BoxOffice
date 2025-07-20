@@ -9,6 +9,7 @@ from typing import List, Dict, TypedDict, Optional, Union
 import logging
 import html
 from datetime import datetime
+from .sqlite_connector import SQLiteConnector
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -50,6 +51,42 @@ class TheaterEventScraper(abc.ABC):
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': UserAgent().random})
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.db_connector = SQLiteConnector()
+
+    def _normalize_movie_title(self, title: str) -> str:
+        """영화 제목을 정규화합니다."""
+        # 괄호 안의 내용 제거 (예: [퀴어], <판타스틱4>)
+        title = re.sub(r'[<\\[].*?[>\\]]', '', title)
+        # 특수문자 제거 및 공백 정규화 (한글, 영어, 숫자, 공백만 허용)
+        title = re.sub(r'[^가-힣a-zA-Z0-9\\s]', '', title)
+        title = re.sub(r'\\s+', ' ', title).strip()
+
+        # movie 테이블에서 원본 영화명 조회
+        # 최대한 정확한 매칭을 위해 LIKE 대신 정확한 매칭을 시도하고, 없으면 LIKE로 대체
+        # 공백, 콜론, 언더스코어를 제거하여 비교
+        cleaned_title = title.replace(' ', '').replace(':', '').replace('_', '')
+        query = f"""
+            SELECT movieNm FROM movie
+            WHERE REPLACE(REPLACE(REPLACE(movieNm, ' ', ''), ':', ''), '_', '') = '{cleaned_title}'
+            LIMIT 1
+        """
+        df = self.db_connector.select_query(query)
+        if not df.empty:
+            return df['movieNm'].iloc[0]
+        
+        # 정확한 매칭이 없으면, 부분 매칭으로 다시 시도
+        query = f"""
+            SELECT movieNm FROM movie
+            WHERE movieNm LIKE '%{title}%'
+            ORDER BY LENGTH(movieNm) ASC
+            LIMIT 1
+        """
+        df = self.db_connector.select_query(query)
+        if not df.empty:
+            return df['movieNm'].iloc[0]
+        
+        # 기타 정규화 규칙 추가 (최후의 수단)
+        return title
 
     @abc.abstractmethod
     def get_events(self) -> List[UnifiedEvent]:
@@ -101,8 +138,138 @@ class CGVScraper(TheaterEventScraper):
             self.logger.error(f"굿즈 정보 파싱 실패 (Event ID: {event_idx}): {e}")
         return None
 
+    def _get_movie_events(self) -> List[UnifiedEvent]:
+        """
+        CGV 영화 관련 이벤트 목록을 스크랩합니다.
+        (https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage)
+        """
+        self.logger.info("CGV 영화 이벤트 목록 조회를 시작합니다.")
+        events = []
+        start_row = 0
+        list_count = 10
+        total_count = -1
+        
+        url = "https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage"
+
+        while True:
+            if total_count != -1 and start_row >= total_count:
+                break
+
+            params = {
+                "coCd": "A420",
+                "evntCtgryLclsCd": "03",
+                "evntCtgryMclsCd": "031",
+                "sscnsChoiYn": "N",
+                "expnYn": "N",
+                "expoChnlCd": "01",
+                "startRow": start_row,
+                "listCount": list_count,
+            }
+            try:
+                response = self.session.get(url, params=params)
+                response.raise_for_status()
+                data = response.json().get("data", {})
+                
+                if total_count == -1:
+                    total_count = data.get("totalCount", 0)
+
+                event_list = data.get("list", [])
+                if not event_list:
+                    break
+
+                for item in event_list:
+                    event_no = item.get("evntNo")
+                    self.logger.debug(f"Processing movie event: {event_no}")
+                    event_name = item.get("evntNm")
+                    
+                    # movie_title 추출
+                    movie_title = None
+                    match = re.search(r'[<\[](.*?)[>\]]', event_name)
+                    if match:
+                        movie_title = self._normalize_movie_title(match.group(1).strip())
+
+                    # 날짜 형식 변환
+                    start_date_str = item.get("evntStartDt", "").split(" ")[0].replace("-", "")
+                    end_date_str = item.get("evntEndDt", "").split(" ")[0].replace("-", "")
+                    start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str
+                    end_date = f"{end_date_str[:4]}.{end_date_str[4:6]}.{end_date_str[6:]}" if end_date_str and len(end_date_str) == 8 else end_date_str
+
+                    # 이미지 URL 조합
+                    image_path = item.get("lagBanrPhyscFilePathnm", "")
+                    image_file = item.get("lagBanrPhyscFnm", "")
+                    image_url = f"https://cdn.cgv.co.kr/{image_path}/{image_file}" if image_path and image_file else None
+                    
+                    # 이벤트 URL 조합
+                    event_url = f"https://cgv.co.kr/evt/eventDetail?evntNo={event_no}&expnYn=N"
+
+                    events.append(UnifiedEvent(
+                        theater_chain=self.chain_name,
+                        event_title=event_name,
+                        movie_title=movie_title,
+                        goods_name=None, # 이 API는 굿즈 정보를 직접 제공하지 않음
+                        start_date=start_date,
+                        end_date=end_date,
+                        event_url=event_url,
+                        image_url=image_url,
+                        event_id=event_no,
+                        goods_id=None,
+                        spmtl_no=None
+                    ))
+                
+                start_row += len(event_list)
+                if len(event_list) < list_count:
+                    break
+
+            except requests.RequestException as e:
+                self.logger.error(f"CGV 영화 이벤트 목록 요청 실패: {e}")
+                break
+            except (json.JSONDecodeError, KeyError) as e:
+                self.logger.error(f"CGV 영화 이벤트 목록 파싱 실패: {e}")
+                break
+        
+        self.logger.info(f"총 {len(events)}개의 CGV 영화 이벤트를 조회했습니다.")
+        return events
+
     def get_events(self) -> List[UnifiedEvent]:
-        self.logger.info("이벤트 목록 조회를 시작합니다.")
+        # 1. 두 종류의 이벤트 목록을 가져옵니다.
+        goods_events = self._get_goods_events()
+        movie_events = self._get_movie_events()
+
+        # 2. 굿즈 이벤트를 기반으로 이벤트 딕셔너리를 생성합니다.
+        #    (movie_title, start_date, end_date)를 고유 키로 사용합니다.
+        events_dict = {}
+        for event in goods_events:
+            if event.get("movie_title") and event.get("start_date") and event.get("end_date"):
+                key = (event["movie_title"], event["start_date"], event["end_date"])
+                events_dict[key] = event
+
+        # 3. 영화 이벤트 목록을 순회하며 딕셔너리를 업데이트합니다.
+        for event in movie_events:
+            if event.get("movie_title") and event.get("start_date") and event.get("end_date"):
+                key = (event["movie_title"], event["start_date"], event["end_date"])
+                if key in events_dict:
+                    # 키가 이미 존재하면, 기존 이벤트에 새로운 정보를 업데이트합니다.
+                    existing_event = events_dict[key]
+                    
+                    # 더 상세한 URL로 업데이트
+                    if "giveawayStateDetail" not in event["event_url"]:
+                        existing_event["event_url"] = event["event_url"]
+                    
+                    # 이미지 URL이 없는 경우 업데이트
+                    if not existing_event.get("image_url") and event.get("image_url"):
+                        existing_event["image_url"] = event["image_url"]
+                        
+                    # event_title이 더 구체적인 경우 업데이트
+                    if len(event["event_title"]) > len(existing_event["event_title"]):
+                        existing_event["event_title"] = event["event_title"]
+
+        # 4. 딕셔너리의 값들을 리스트로 변환하여 최종 결과를 반환합니다.
+        all_events = list(events_dict.values())
+        self.logger.info(f"총 {len(all_events)}개의 통합된 이벤트를 조회했습니다.")
+        return all_events
+
+    def _get_goods_events(self) -> List[UnifiedEvent]:
+        self.logger.info("CGV 굿즈 이벤트 목록 조회를 시작합니다.")
         all_events = []
         start_row = 0
         list_count = 20
@@ -153,7 +320,7 @@ class CGVScraper(TheaterEventScraper):
                         if event_name:
                             match = re.search(r'[<\[](.*?)[>\]]', event_name)
                             if match:
-                                movie_title = match.group(1).strip()
+                                movie_title = self._normalize_movie_title(match.group(1).strip())
                             goods_name = re.sub(r'\[.*?\]', '', event_name).strip()
 
                         start_date_str = event.get("evntStartYmd")
@@ -314,7 +481,7 @@ class LotteCinemaScraper(TheaterEventScraper):
 
                 # 영화 제목 및 굿즈 이름 파싱
                 movie_title_match = re.search(r'<([^<>]+)>', event_name)
-                movie_title = movie_title_match.group(1).strip() if movie_title_match else None
+                movie_title = self._normalize_movie_title(movie_title_match.group(1).strip()) if movie_title_match else None
 
                 if '시그니처 아트카드' in event_name:
                     goods_name = '시그니처 아트카드'
@@ -471,13 +638,13 @@ class MegaboxScraper(TheaterEventScraper):
                 unescaped_goods_name = html.unescape(raw_goods_name)
                 movie_match_goods = re.search(r'[<\[](.*?)[>\]]', unescaped_goods_name)
                 if movie_match_goods:
-                    movie_title = movie_match_goods.group(1).strip()
+                    movie_title = self._normalize_movie_title(movie_match_goods.group(1).strip())
 
                 if not movie_title:
                     unescaped_event_title = html.unescape(event_title)
                     movie_match_event = re.search(r'[<\[](.*?)[>\]]', unescaped_event_title)
                     if movie_match_event:
-                        movie_title = movie_match_event.group(1).strip()
+                        movie_title = self._normalize_movie_title(movie_match_event.group(1).strip())
 
                 # 굿즈명에서 영화명 제거
                 if movie_title:
