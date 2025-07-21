@@ -310,6 +310,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
             align-items: center; /* Center horizontally */
             height: 100%; /* Make it take full height of its parent column */
             min-height: 400px; /* Minimum height to match dataframe, adjust as needed */
+            max-height: 400px; /* 이미지 높이 제한 추가 */
             overflow: hidden; /* Hide overflow if image is too big */
         }
         .custom-image-wrapper img {
