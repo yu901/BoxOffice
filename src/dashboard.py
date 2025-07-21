@@ -103,7 +103,7 @@ def show_boxoffice_dashboard(df):
 
 def show_overall_boxoffice_dashboard(df):
     """Displays the overall box office analysis dashboard."""
-    st.title("📈 박스오피스 개요")
+    st.title("📈 기간별 박스오피스")
 
     if df.empty:
         st.warning("박스오피스 데이터가 없습니다.")
@@ -377,9 +377,9 @@ def get_ai_agent():
         return None
 
 def show_ai_chat_dashboard():
-    """AI 챗봇 대시보드를 표시합니다."""
-    st.title("🤖 AI 영화 데이터 분석가")
-    st.info("영화 데이터에 대해 궁금한 점을 자유롭게 물어보세요! (예: '최근 7일간 가장 많은 관객을 동원한 영화 3개 알려줘', '범죄도시4의 누적 관객수는?')")
+    """영화 데이터 챗봇 대시보드를 표시합니다."""
+    st.title("🤖 영화 데이터 챗봇")
+    st.info("영화 데이터에 대해 궁금한 점을 자유롭게 물어보세요! (예: '최근 7일간 가장 많은 관객을 동원한 영화 3개 알려줘', '쥬라기월드의 누적 관객수는?')")
 
     agent = get_ai_agent()
     if not agent:
@@ -421,11 +421,11 @@ def main():
     boxoffice_df, stock_df, event_df = load_data()
 
     st.sidebar.title("대시보드 선택")
-    page = st.sidebar.radio("이동", ["AI 데이터 분석가", "박스오피스 개요", "일일 박스오피스", "굿즈 재고 현황"])
+    page = st.sidebar.radio("이동", ["영화 데이터 챗봇", "기간별 박스오피스", "일일 박스오피스", "굿즈 재고 현황"])
 
-    if page == "AI 데이터 분석가":
+    if page == "영화 데이터 챗봇":
         show_ai_chat_dashboard()
-    elif page == "박스오피스 개요":
+    elif page == "기간별 박스오피스":
         show_overall_boxoffice_dashboard(boxoffice_df)
     elif page == "일일 박스오피스":
         show_boxoffice_dashboard(boxoffice_df)
