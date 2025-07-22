@@ -6,6 +6,70 @@ from boxoffice.logic.ai_agent import AIAgent
 
 st.set_page_config(layout="wide")
 
+st.markdown("""
+<style>
+.summary-cards-wrapper {
+    display: flex;
+    justify-content: space-around;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.summary-card {
+    background-color: #f0f2f6;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    min-height: 220px; /* 카드 높이 조절 */
+}
+
+.card-title {
+    font-size: 1.3em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.card-title .icon {
+    font-size: 1.5em;
+    margin-right: 10px;
+}
+
+.card-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.card-list-item {
+    font-size: 1.4em;
+    margin-bottom: 8px;
+    color: #555;
+}
+
+.card-list-item strong {
+    color: #333;
+}
+
+.card-list-item .value {
+    font-size: 0.85em;
+    color: #007bff; /* Primary color for values */
+}
+
+.rank-text {
+    font-size: 1.1em; /* Make rank text slightly larger */
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 @st.cache_data(ttl=600) # Cache data for 10 minutes
 def load_data():
     """Loads data from the SQLite database."""
@@ -13,11 +77,12 @@ def load_data():
     boxoffice_df = db.select_query("SELECT * FROM boxoffice ORDER BY targetDt DESC, rank ASC")
     stock_df = db.select_query("SELECT * FROM goods_stock")
     event_df = db.select_query("SELECT * FROM goods_event ORDER BY start_date DESC")
-    return boxoffice_df, stock_df, event_df
+    movie_details_df = db.select_query("SELECT movieCd, repGenreNm FROM movie") # Added for genre KPI
+    return boxoffice_df, stock_df, event_df, movie_details_df
 
 def show_boxoffice_dashboard(df):
     """Displays the daily box office dashboard."""
-    st.title("📊 일일 박스오피스 현황")
+    st.title("📊 일일 박스오피스")
 
     if df.empty:
         st.warning("박스오피스 데이터가 없습니다.")
@@ -101,7 +166,7 @@ def show_boxoffice_dashboard(df):
         "일일 매출액": "{:,.0f}",
     }), hide_index=True)
 
-def show_overall_boxoffice_dashboard(df):
+def show_overall_boxoffice_dashboard(df, movie_details_df):
     """Displays the overall box office analysis dashboard."""
     st.title("📈 기간별 박스오피스")
 
@@ -128,45 +193,131 @@ def show_overall_boxoffice_dashboard(df):
     # Filter data based on selected date range
     filtered_df = df[(df['targetDt_date'] >= start_date) & (df['targetDt_date'] <= end_date)]
 
-    # 2. Overall Trends
-    st.header("기간별 박스오피스 추이")
-    daily_total_audience = filtered_df.groupby('targetDt_date')['audiCnt'].sum().reset_index()
-    trend_chart = alt.Chart(daily_total_audience).mark_line().encode(
-        x=alt.X('targetDt_date:T', title='날짜'),
-        y=alt.Y('audiCnt:Q', title='총 관객수'),
-        tooltip=['targetDt_date', 'audiCnt']
-    ).interactive()
-    st.altair_chart(trend_chart, use_container_width=True)
-
-    # 3. Top Performing Movies
-    st.header(f"기간별 흥행 영화 TOP 10 ({start_date} ~ {end_date})")
+    # Calculate top performing movies for multiselect options
     top_movies_by_audience = filtered_df.groupby('movieNm')['audiCnt'].sum().nlargest(10).reset_index()
-    
-    top_movies_chart = alt.Chart(top_movies_by_audience).mark_bar().encode(
-        x=alt.X('movieNm:N', sort='-y', title='영화 제목'),
-        y=alt.Y('audiCnt:Q', title='총 관객수'),
-        tooltip=['movieNm', 'audiCnt']
-    )
-    st.altair_chart(top_movies_chart, use_container_width=True)
 
-    # 4. Detailed Movie Performance
-    st.header("주요 영화별 흥행 추이")
+    # --- KPIs ---
+    st.subheader("✨ 기간별 핵심 지표")
+
+    # KPI 1: 기간 중 관객수가 가장 많았던 날짜
+    if not filtered_df.empty:
+        top_3_dates_data = filtered_df.groupby('targetDt_date')['audiCnt'].sum().nlargest(3).reset_index()
+        top_3_dates_data.columns = ['date', 'audiCnt']
+        
+        date_kpi_parts = [
+            '<div class="summary-card">',
+            '<div class="card-title"><span class="icon">🗓️</span> 관객수 최고 기록일</div>',
+            '<ul class="card-list">'
+        ]
+        for i, row in top_3_dates_data.iterrows():
+            date_kpi_parts.append(f'<li class="card-list-item"><strong class="rank-text">{i+1}위:</strong> {row["date"].strftime("%Y-%m-%d")} <br><span class="value">(총 {int(row["audiCnt"]):,}명)</span></li>')
+        date_kpi_parts.extend(['</ul>', '</div>'])
+        date_kpi_html = "".join(date_kpi_parts)
+    else:
+        date_kpi_html = '<div class="summary-card"><div class="card-title"><span class="icon">🗓️</span> 관객수 최고 기록일</div><ul class="card-list"><li class="card-list-item">데이터 없음</li></ul></div>'
+
+    # KPI 2: 가장 인기 있는 영화 (Top 3)
+    top_3_movies_data = filtered_df.groupby('movieNm')['audiCnt'].sum().nlargest(3).reset_index()
+    top_3_movies_data.columns = ['movieNm', 'audiCnt']
+
+    movie_kpi_parts = [
+        '<div class="summary-card">',
+        '<div class="card-title"><span class="icon">🎬</span> 가장 사랑받은 영화</div>',
+        '<ul class="card-list">'
+    ]
+    for i, row in top_3_movies_data.iterrows():
+        movie_kpi_parts.append(f'<li class="card-list-item"><strong class="rank-text">{i+1}위:</strong> &lt;{row["movieNm"]}&gt; <br><span class="value">(총 {int(row["audiCnt"]):,}명)</span></li>')
+    movie_kpi_parts.extend(['</ul>', '</div>'])
+    movie_kpi_html = "".join(movie_kpi_parts)
+
+    # KPI 3: 주요 장르 (Top 3)
+    unique_movies_in_period = filtered_df[['movieCd', 'movieNm']].drop_duplicates()
+    movies_with_genre = pd.merge(unique_movies_in_period, movie_details_df, on='movieCd', how='left')
+    movies_with_genre = movies_with_genre[movies_with_genre['repGenreNm'].notna() & (movies_with_genre['repGenreNm'] != '')]
+
+    if not movies_with_genre.empty:
+        genre_summary = movies_with_genre.groupby('repGenreNm').agg(
+            movie_count=('movieNm', 'nunique'),
+            movie_list=('movieNm', lambda x: ', '.join(sorted(x.unique())))
+        ).reset_index()
+        
+        top_3_genres_data = genre_summary.sort_values(by='movie_count', ascending=False).nlargest(3, 'movie_count').reset_index(drop=True)
+
+        genre_kpi_parts = [
+            '<div class="summary-card">',
+            '<div class="card-title"><span class="icon">🎭</span> 주요 상영 장르</div>',
+            '<ul class="card-list">'
+        ]
+        for i, row in top_3_genres_data.iterrows():
+            movie_list_str = row["movie_list"]
+            if len(movie_list_str) > 31:
+                movie_list_str = movie_list_str[:31] + "..."
+            genre_kpi_parts.append(f'<li class="card-list-item"><strong class="rank-text">{i+1}위:</strong> {row["repGenreNm"]} <br><span class="value">({row["movie_count"]}편: {movie_list_str})</span></li>')
+        genre_kpi_parts.extend(['</ul>', '</div>'])
+        genre_kpi_html = "".join(genre_kpi_parts)
+    else:
+        genre_kpi_html = '<div class="summary-card"><div class="card-title"><span class="icon">🎭</span> 주요 상영 장르</div><ul class="card-list"><li class="card-list-item">데이터 없음</li></ul></div>'
+
+    # Display KPIs in columns
+    kpi_cols = st.columns(3)
+    with kpi_cols[0]:
+        st.markdown(date_kpi_html, unsafe_allow_html=True)
+    with kpi_cols[1]:
+        st.markdown(movie_kpi_html, unsafe_allow_html=True)
+    with kpi_cols[2]:
+        st.markdown(genre_kpi_html, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)  # Add vertical space
+
+    # Combined Trend Chart
+    st.subheader("📊 박스오피스 흥행 추이")
+
+    # Calculate total daily audience for the overall trend (bar chart)
+    daily_total_audience = filtered_df.groupby('targetDt_date')['audiCnt'].sum().reset_index()
+
+    # Get top movie names for multiselect
     top_movie_names = top_movies_by_audience['movieNm'].tolist()
-    selected_movies = st.multiselect("비교할 영화를 선택하세요:", options=top_movie_names, default=top_movie_names[:3])
+    selected_movies = st.multiselect("비교할 영화를 선택하세요:", options=top_movie_names, default=top_movie_names[:3], key="movie_selection_overall")
 
-    if selected_movies:
-        movie_trend_df = filtered_df[filtered_df['movieNm'].isin(selected_movies)]
-        movie_trend_chart = alt.Chart(movie_trend_df).mark_line().encode(
-            x=alt.X('targetDt_date:T', title='날짜'),
-            y=alt.Y('audiCnt:Q', title='일일 관객수'),
-            color='movieNm:N',
-            tooltip=['targetDt_date', 'movieNm', 'audiCnt']
-        ).interactive()
-        st.altair_chart(movie_trend_chart, use_container_width=True)
+    # Filter for selected movies
+    movie_trend_df = filtered_df[filtered_df['movieNm'].isin(selected_movies)]
+
+    # Overall total audience trend (left Y-axis, bar chart)
+    overall_trend_chart = alt.Chart(daily_total_audience).mark_bar().encode(
+        x=alt.X('targetDt_date:T', title='날짜'),
+        y=alt.Y('audiCnt:Q', title='총 관객수 (전체 영화)', axis=alt.Axis(format='~s')),
+        tooltip=[
+            alt.Tooltip('targetDt_date', title='날짜'),
+            alt.Tooltip('audiCnt', title='총 관객수', format=',')
+        ],
+        color=alt.value('#ADD8E6') # 연한 파란색 (Light Blue)
+    )
+
+    # Individual movie trends (right Y-axis, line chart)
+    individual_movie_chart = alt.Chart(movie_trend_df).mark_line(point=True).encode(
+        x=alt.X('targetDt_date:T'), # Use the same X-axis encoding
+        y=alt.Y('audiCnt:Q', title='일일 관객수 (개별 영화)', axis=alt.Axis(orient='right', format='~s')),
+        color=alt.Color('movieNm:N', title='영화명'), # Color by movie name
+        tooltip=[
+            alt.Tooltip('targetDt_date', title='날짜'),
+            alt.Tooltip('movieNm', title='영화명'),
+            alt.Tooltip('audiCnt', title='일일 관객수', format=',')
+        ]
+    )
+
+    # Combine charts
+    combined_trend_chart = alt.layer(overall_trend_chart, individual_movie_chart).resolve_scale(
+        y='independent' # Independent Y-axes
+    ).properties(
+        width=1300, # Fixed width for the chart area
+        height=400 # Fixed height for the chart area
+    )
+
+    st.altair_chart(combined_trend_chart, use_container_width=False)
 
 def show_goods_stock_dashboard(stock_df, events_df):
     """Displays the goods stock dashboard."""
-    st.title("🎁 영화 굿즈 재고 현황")
+    st.title("🎁 굿즈 재고 현황")
 
     if events_df.empty:
         st.info("현재 진행중인 굿즈 이벤트가 없습니다.")
@@ -177,7 +328,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
         # DB에서 읽어온 scraped_at은 문자열일 수 있으므로 datetime으로 변환
         stock_df['scraped_at'] = pd.to_datetime(stock_df['scraped_at'])
         latest_scrape_time = stock_df['scraped_at'].max()
-        st.header(f"⏰ 마지막 업데이트: {latest_scrape_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        st.subheader(f"⏰ 마지막 업데이트: {latest_scrape_time.strftime('%Y-%m-%d %H:%M:%S')}")
         # 가장 최근 재고 데이터만 사용
         latest_stock_df = stock_df[stock_df['scraped_at'] == latest_scrape_time].copy()
     else:
@@ -197,7 +348,6 @@ def show_goods_stock_dashboard(stock_df, events_df):
     events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now().normalize()]
 
     # --- 필터링 UI ---
-    st.subheader("🔎 이벤트 필터")
     filter_cols = st.columns(2)
     
     # 1. 영화관 필터
@@ -215,7 +365,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
         events_df = events_df[events_df['movie_title'] == selected_movie]
 
 
-    st.subheader("🎟️ 현재 진행중인 굿즈 이벤트")
+    st.subheader("🎟️ 진행중인 굿즈 이벤트")
 
     # --- Single-select checkbox logic ---
     # 1. 세션 상태를 사용하여 단일 선택된 이벤트의 ID를 기억합니다.
@@ -341,7 +491,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
                             </div>
                         """, unsafe_allow_html=True)
                     else:
-                        st.markdown("<div class=\"custom-image-wrapper\">이미지 없음</div>", unsafe_allow_html=True)
+                        st.markdown("""<div class="custom-image-wrapper">이미지 없음</div>""", unsafe_allow_html=True)
 
                 with col_table:
                     stock_display_df = latest_stock_df[
@@ -418,7 +568,7 @@ def show_ai_chat_dashboard():
         st.session_state.ai_messages.append({"role": "assistant", "content": answer, "sql": sql_query})
 
 def main():
-    boxoffice_df, stock_df, event_df = load_data()
+    boxoffice_df, stock_df, event_df, movie_details_df = load_data()
 
     st.sidebar.title("대시보드 선택")
     page = st.sidebar.radio("이동", ["영화 데이터 챗봇", "기간별 박스오피스", "일일 박스오피스", "굿즈 재고 현황"])
@@ -426,7 +576,7 @@ def main():
     if page == "영화 데이터 챗봇":
         show_ai_chat_dashboard()
     elif page == "기간별 박스오피스":
-        show_overall_boxoffice_dashboard(boxoffice_df)
+        show_overall_boxoffice_dashboard(boxoffice_df, movie_details_df)
     elif page == "일일 박스오피스":
         show_boxoffice_dashboard(boxoffice_df)
     elif page == "굿즈 재고 현황":
