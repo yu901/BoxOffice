@@ -309,11 +309,10 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
     combined_trend_chart = alt.layer(overall_trend_chart, individual_movie_chart).resolve_scale(
         y='independent' # Independent Y-axes
     ).properties(
-        width=1300, # Fixed width for the chart area
-        height=400 # Fixed height for the chart area
+        height=400
     )
 
-    st.altair_chart(combined_trend_chart, use_container_width=False)
+    st.altair_chart(combined_trend_chart, use_container_width=True)
 
 def show_goods_stock_dashboard(stock_df, events_df):
     """Displays the goods stock dashboard."""
@@ -344,8 +343,9 @@ def show_goods_stock_dashboard(stock_df, events_df):
 
     # 종료일이 지난 이벤트는 필터링합니다.
     # errors='coerce'는 잘못된 날짜 형식을 NaT (Not a Time)으로 변환하여 오류를 방지합니다.
-    events_df['end_date_dt'] = pd.to_datetime(events_df['end_date'], errors='coerce')
-    events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now().normalize()]
+    # 한국 시간(KST)을 기준으로 현재 날짜와 비교합니다.
+    events_df['end_date_dt'] = pd.to_datetime(events_df['end_date'], errors='coerce').dt.tz_localize('Asia/Seoul')
+    events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now(tz='Asia/Seoul').normalize()]
 
     # --- 필터링 UI ---
     filter_cols = st.columns(2)
