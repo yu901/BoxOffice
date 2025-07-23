@@ -93,61 +93,8 @@ def save_events_to_db(events: List[Dict]):
         return
 
     db = get_database_connector()
-    conn = None
-    try:
-        conn = db._get_connection()
-        cursor = conn.cursor()
-
-        for event_data in events:
-            # UnifiedEvent의 모든 필드를 가져옵니다.
-            event_id = event_data.get("event_id")
-            theater_chain = event_data.get("theater_chain")
-            event_title = event_data.get("event_title")
-            movie_title = event_data.get("movie_title")
-            goods_name = event_data.get("goods_name")
-            goods_id = event_data.get("goods_id")
-            start_date = event_data.get("start_date")
-            end_date = event_data.get("end_date")
-            event_url = event_data.get("event_url")
-            image_url = event_data.get("image_url")
-            spmtl_no = event_data.get("spmtl_no")
-
-            # INSERT OR UPDATE 쿼리 (UPSERT)
-            upsert_query = f"""
-                INSERT INTO goods_event (
-                    event_id, theater_chain, event_title, movie_title, goods_name,
-                    goods_id, start_date, end_date, event_url, image_url, spmtl_no
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(event_id) DO UPDATE SET
-                    theater_chain = excluded.theater_chain,
-                    event_title = excluded.event_title,
-                    movie_title = excluded.movie_title,
-                    goods_name = excluded.goods_name,
-                    goods_id = excluded.goods_id,
-                    start_date = excluded.start_date,
-                    end_date = excluded.end_date,
-                    event_url = excluded.event_url,
-                    image_url = excluded.image_url,
-                    spmtl_no = excluded.spmtl_no
-                WHERE event_id = ?;
-            """
-            cursor.execute(upsert_query, (
-                event_id, theater_chain, event_title, movie_title, goods_name,
-                goods_id, start_date, end_date, event_url, image_url, spmtl_no,
-                event_id # ON CONFLICT DO UPDATE WHERE 절에 사용될 event_id
-            ))
-            logger.info(f"이벤트 저장/업데이트: {event_title} (ID: {event_id})")
-        
-        conn.commit()
-        logger.info(f"총 {len(events)}건의 이벤트 정보를 DB에 저장/업데이트했습니다.")
-
-    except Exception as e:
-        logger.error(f"이벤트 정보 저장/업데이트 중 오류 발생: {e}", exc_info=True)
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
+    db.insert_goods_event(events)
+    logger.info(f"총 {len(events)}건의 이벤트 정보를 DB에 저장/업데이트했습니다.")
 
 @op(ins={"stocks": In(List[Dict])}, out=Out(pd.DataFrame))
 def save_stocks_to_db(stocks: List[Dict]):

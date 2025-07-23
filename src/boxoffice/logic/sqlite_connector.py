@@ -73,13 +73,44 @@ class SQLiteConnector(BaseDatabaseConnector):
         df.to_sql("boxoffice", self.engine, if_exists='append', index=False)
 
     def insert_goods_event(self, events: List[Dict]):
-        """굿즈 이벤트 정보를 DB에 저장합니다."""
+        """굿즈 이벤트 정보를 DB에 저장합니다. ON CONFLICT를 사용하여 업데이트합니다."""
         if not events:
             return
-        df = pd.DataFrame(events)
-        df.to_sql("goods_event", self.engine, if_exists='append', index=False, dtype={
-            'event_id': types.TEXT,
-        })
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            upsert_query = """
+                INSERT INTO goods_event (
+                    event_id, theater_chain, event_title, movie_title, goods_name,
+                    goods_id, start_date, end_date, event_url, image_url, spmtl_no
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id) DO UPDATE SET
+                    theater_chain = excluded.theater_chain,
+                    event_title = excluded.event_title,
+                    movie_title = excluded.movie_title,
+                    goods_name = excluded.goods_name,
+                    goods_id = excluded.goods_id,
+                    start_date = excluded.start_date,
+                    end_date = excluded.end_date,
+                    event_url = excluded.event_url,
+                    image_url = excluded.image_url,
+                    spmtl_no = excluded.spmtl_no
+                WHERE event_id = excluded.event_id;
+            """
+            # 딕셔너리 리스트를 튜플 리스트로 변환
+            data_to_insert = [
+                (event.get("event_id"), event.get("theater_chain"), event.get("event_title"),
+                 event.get("movie_title"), event.get("goods_name"), event.get("goods_id"),
+                 event.get("start_date"), event.get("end_date"), event.get("event_url"),
+                 event.get("image_url"), event.get("spmtl_no"))
+                for event in events
+            ]
+            cursor.executemany(upsert_query, data_to_insert)
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
 
     def insert_goods_stock(self, df: pd.DataFrame):
         """굿즈 재고 정보를 DB에 저장합니다."""
