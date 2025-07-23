@@ -129,16 +129,28 @@ class KobisDataExtractor:
         boxoffice_df = boxoffice_df.dropna(subset=['openDt'])
 
         col_types = {
-            col: "float" for col in boxoffice_df.columns
-            if any(x in col for x in ["Cnt", "Amt", "Share", "Inten", "Change", "Acc"])
+            "rnum": "int",
+            "rank": "int",
+            "rankInten": "int",
+            "salesAmt": "float",
+            "salesShare": "float",
+            "salesInten": "float",
+            "salesChange": "float",
+            "audiCnt": "float",
+            "audiInten": "float",
+            "audiChange": "float",
+            "audiAcc": "float",
+            "scrnCnt": "float",
+            "showCnt": "float",
         }
-        boxoffice_df = boxoffice_df.astype(col_types)
-        boxoffice_df["elapsedDt"] = (boxoffice_df["targetDt"] - boxoffice_df["openDt"]).dt.days
+        for col, dtype in col_types.items():
+            if col in boxoffice_df.columns:
+                if dtype == "int":
+                    boxoffice_df[col] = pd.to_numeric(boxoffice_df[col], errors='coerce').fillna(0).astype(int)
+                elif dtype == "float":
+                    boxoffice_df[col] = pd.to_numeric(boxoffice_df[col], errors='coerce').fillna(0).astype(float)
+
+        boxoffice_df["elapsed_dt"] = (boxoffice_df["target_dt"] - boxoffice_df["open_dt"]).dt.days
         return boxoffice_df
 
-if __name__ == '__main__':
-    kobisdata_extractor = KobisDataExtractor()
-    MovieList = kobisdata_extractor.get_MovieList(2024)
-    print("MovieList")
-    print(MovieList.head(3))
-    print(MovieList["openDt"].min())
+

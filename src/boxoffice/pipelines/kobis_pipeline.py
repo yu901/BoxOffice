@@ -21,11 +21,11 @@ def extract_kobis_data(context):
     # DB에 데이터가 없거나 날짜가 없는 경우, 최근 7일치 수집
     if latest_date_df.empty or pd.isna(latest_date_df['max_date'].iloc[0]):
         logger.info("박스오피스 데이터가 없습니다. 최근 7일치 데이터를 수집합니다.")
-        start_date = yesterday - timedelta(days=6)
+        start_date = (yesterday - timedelta(days=6)).date()
     else:
         # 마지막 날짜의 다음날부터 수집 시작
         latest_date_in_db = pd.to_datetime(latest_date_df['max_date'].iloc[0]).date()
-        start_date = (latest_date_in_db + timedelta(days=1))
+        start_date = (latest_date_in_db + timedelta(days=1)).date()
 
     boxoffice_df = pd.DataFrame()
     all_boxoffice_dfs = []
@@ -42,19 +42,20 @@ def extract_kobis_data(context):
         if all_boxoffice_dfs:
             boxoffice_df = pd.concat(all_boxoffice_dfs, ignore_index=True)
         else:
-            boxoffice_df = pd.DataFrame(columns=['rnum', 'rank', 'rankInten', 'rankOldAndNew', 'movieCd', 'movieNm', 'openDt', 'salesAmt', 'salesShare', 'salesInten', 'salesChange', 'salesAcc', 'audiCnt', 'audiInten', 'audiChange', 'audiAcc', 'scrnCnt', 'showCnt'])
+            boxoffice_df = pd.DataFrame(columns=['rnum', 'rank', 'rank_inten', 'rank_old_and_new', 'movie_cd', 'movie_nm', 'open_dt', 'sales_amt', 'sales_share', 'sales_inten', 'sales_change', 'sales_acc', 'audi_cnt', 'audi_inten', 'audi_change', 'audi_acc', 'scrn_cnt', 'show_cnt'])
         logger.info(f"박스오피스 수집 완료. {len(boxoffice_df)}건")
     else:
         logger.info("박스오피스 데이터가 최신 상태입니다. 수집을 건너뜁니다.")
-        boxoffice_df = pd.DataFrame(columns=['rnum', 'rank', 'rankInten', 'rankOldAndNew', 'movieCd', 'movieNm', 'openDt', 'salesAmt', 'salesShare', 'salesInten', 'salesChange', 'salesAcc', 'audiCnt', 'audiInten', 'audiChange', 'audiAcc', 'scrnCnt', 'showCnt'])
+        boxoffice_df = pd.DataFrame(columns=['rnum', 'rank', 'rank_inten', 'rank_old_and_new', 'movie_cd', 'movie_nm', 'open_dt', 'sales_amt', 'sales_share', 'sales_inten', 'sales_change', 'sales_acc', 'audi_cnt', 'audi_inten', 'audi_change', 'audi_acc', 'scrn_cnt', 'show_cnt'])
 
     # 2. movie list
     current_year = datetime.now().year
     movie_df = extractor.get_MovieList(current_year)
     logger.info(f"영화목록 수집 완료. {len(movie_df)}건")
+    
 
     if movie_df.empty:
-        movie_df = pd.DataFrame(columns=['movieCd', 'movieNm', 'movieNmEn', 'prdtYear', 'openDt', 'typeNm', 'prdtStatNm', 'nationAlt', 'genreAlt', 'repNationNm', 'repGenreNm', 'directors', 'companys'])
+        movie_df = pd.DataFrame(columns=['movie_cd', 'movie_nm', 'movie_nm_en', 'prdt_year', 'open_dt', 'type_nm', 'prdt_stat_nm', 'nation_alt', 'genre_alt', 'rep_nation_nm', 'rep_genre_nm', 'directors', 'companys'])
 
     return boxoffice_df, movie_df
 
@@ -73,9 +74,11 @@ def save_kobis_data(boxoffice_df, movie_df):
         logger.info("삽입할 신규 박스오피스 데이터가 없습니다.")
 
     # 2. movie: 중복제거 후 삽입
-    exist_movie_df = db.select_query("SELECT movieCd FROM movie")
-    exist_codes = set(exist_movie_df["movieCd"].unique())
-    new_movie_df = movie_df[~movie_df["movieCd"].isin(exist_codes)].copy()
+    exist_movie_df = db.select_query("SELECT movie_cd FROM movie")
+    exist_codes = set()
+    if not exist_movie_df.empty and "movie_cd" in exist_movie_df.columns:
+        exist_codes = set(exist_movie_df["movie_cd"].unique())
+    new_movie_df = movie_df[~movie_df["movie_cd"].isin(exist_codes)].copy()
 
     db.insert_movie(new_movie_df)
     logger.info(f"{len(new_movie_df)}건 신규 movie 삽입 완료")

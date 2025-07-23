@@ -24,3 +24,7 @@ class BaseDatabaseConnector(ABC):
     @abstractmethod
     def insert_goods_stock(self, stocks: pd.DataFrame):
         pass
+
+    @abstractmethod
+    def _get_db_column_name(self, logical_name: str) -> str:
+        pass

@@ -88,7 +88,7 @@ def show_boxoffice_dashboard(df):
         st.warning("박스오피스 데이터가 없습니다.")
         return
 
-    df['targetDt_date'] = pd.to_datetime(df['targetDt']).dt.date
+    df['target_dt_date'] = pd.to_datetime(df['target_dt']).dt.date
     
     # Date selector
     available_dates = df['targetDt_date'].unique()
@@ -174,7 +174,7 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
         st.warning("박스오피스 데이터가 없습니다.")
         return
 
-    df['targetDt_date'] = pd.to_datetime(df['targetDt']).dt.date
+    df['target_dt_date'] = pd.to_datetime(df['target_dt']).dt.date
     min_db_date = df['targetDt_date'].min()
     max_db_date = df['targetDt_date'].max()
 
@@ -295,13 +295,13 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
 
     # Individual movie trends (right Y-axis, line chart)
     individual_movie_chart = alt.Chart(movie_trend_df).mark_line(point=True).encode(
-        x=alt.X('targetDt_date:T'), # Use the same X-axis encoding
-        y=alt.Y('audiCnt:Q', title='일일 관객수 (개별 영화)', axis=alt.Axis(orient='right', format='~s')),
-        color=alt.Color('movieNm:N', title='영화명'), # Color by movie name
+        x=alt.X('target_dt_date:T'), # Use the same X-axis encoding
+        y=alt.Y('audi_cnt:Q', title='일일 관객수 (개별 영화)', axis=alt.Axis(orient='right', format='~s')),
+        color=alt.Color('movie_nm:N', title='영화명'), # Color by movie name
         tooltip=[
-            alt.Tooltip('targetDt_date', title='날짜'),
-            alt.Tooltip('movieNm', title='영화명'),
-            alt.Tooltip('audiCnt', title='일일 관객수', format=',')
+            alt.Tooltip('target_dt_date', title='날짜'),
+            alt.Tooltip('movie_nm', title='영화명'),
+            alt.Tooltip('audi_cnt', title='일일 관객수', format=',')
         ]
     )
 

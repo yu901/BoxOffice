@@ -3,6 +3,7 @@ from src.boxoffice.logic.config import SupabaseConfig
 from src.boxoffice.logic.base_connector import BaseDatabaseConnector
 import pandas as pd
 from typing import List, Dict
+from datetime import datetime, date # datetime과 date import 추가
 
 class SupabaseConnector(BaseDatabaseConnector):
     def __init__(self):
@@ -31,40 +32,72 @@ class SupabaseConnector(BaseDatabaseConnector):
         :param conflict_column: 중복 확인의 기준이 될 컬럼명
         """
         try:
-            # on_conflict 파라미터를 사용하여 중복 발생 시 업데이트를 수행합니다.
-            response = self.client.table(table_name).upsert(data, on_conflict=conflict_column).execute()
-            print(f"Successfully upserted {len(data)} rows to '{table_name}'.")
+            processed_data = []
+            for record in data:
+                processed_record = {}
+                for k, v in record.items():
+                    # datetime 객체를 ISO 8601 문자열로 변환
+                    if isinstance(v, (datetime, date)):
+                        processed_record[self._get_db_column_name(k)] = v.isoformat()
+                    elif pd.isna(v):
+                        processed_record[self._get_db_column_name(k)] = None # NaN 값을 None으로 명시적으로 변환
+                    elif self._get_db_column_name(k) == 'total_quantity' and isinstance(v, float):
+                        processed_record[self._get_db_column_name(k)] = int(v) # float 형태의 정수를 int로 변환
+                    else:
+                        processed_record[self._get_db_column_name(k)] = v
+                processed_data.append(processed_record)
+
+            # conflict_column을 소문자로 변환
+            db_conflict_column = ','.join([col.strip().lower() for col in conflict_column.split(',')])
+            response = self.client.table(table_name).upsert(processed_data, on_conflict=db_conflict_column).execute()
             return response
         except Exception as e:
             print(f"An error occurred during upsert: {e}")
             return None
 
     def insert_boxoffice(self, df: pd.DataFrame):
+        print(f"[SupabaseConnector] Attempting to insert {len(df)} rows into boxoffice.")
         if not df.empty:
             self._upsert_data('boxoffice', df.to_dict(orient='records'), 'movieCd,targetDt')
 
     def insert_movie(self, df: pd.DataFrame):
+        print(f"[SupabaseConnector] Attempting to insert {len(df)} rows into movie.")
         if not df.empty:
             self._upsert_data('movie', df.to_dict(orient='records'), 'movieCd')
 
     def insert_goods_event(self, events: List[Dict]):
+        print(f"[SupabaseConnector] Attempting to insert {len(events)} rows into goods_event.")
         if events:
             self._upsert_data('goods_event', events, 'event_id')
 
     def insert_goods_stock(self, df: pd.DataFrame):
+        print(f"[SupabaseConnector] Attempting to insert {len(df)} rows into goods_stock.")
         if not df.empty:
+            df.columns = [self._get_db_column_name(col) for col in df.columns]
+            # quantity 컬럼의 NaN 값을 빈 문자열로 변환
+            if 'quantity' in df.columns:
+                df['quantity'] = df['quantity'].fillna("")
+            
+            # total_quantity 컬럼의 NaN 값을 None으로 변환
+            if 'total_quantity' in df.columns:
+                df['total_quantity'] = df['total_quantity'].where(pd.notna(df['total_quantity']), None)
+
             self._upsert_data('goods_stock', df.to_dict(orient='records'), 'event_id,theater_name,scraped_at')
 
     def select_query(self, query: str) -> pd.DataFrame:
-        # Supabase는 SQL 쿼리를 직접 실행하는 대신, 테이블 API를 사용합니다.
-        # 따라서 이 메서드는 쿼리 문자열을 파싱하거나, 특정 테이블에 대한
-        # 일반적인 select 로직을 구현해야 합니다.
-        # 여기서는 간단한 예시로, 'SELECT * FROM table_name' 형태의 쿼리만 지원한다고 가정합니다.
-        # 실제 사용 시에는 더 복잡한 쿼리 파싱 로직이 필요할 수 있습니다.
         try:
             table_name = query.split('FROM')[1].strip().split(' ')[0]
-            response = self.client.table(table_name).select('*').execute()
-            return pd.DataFrame(response.data)
+            # Supabase는 컬럼 이름을 소문자로 반환하므로, 쿼리도 소문자로 변환
+            db_table_name = self._get_db_column_name(table_name)
+            response = self.client.table(db_table_name).select('*').execute()
+            
+            df = pd.DataFrame(response.data)
+            
+            return df
         except Exception as e:
             print(f"An error occurred during select_query: {e}")
             return pd.DataFrame()
+
+    def _get_db_column_name(self, logical_name: str) -> str:
+        """논리적 컬럼 이름을 Supabase DB의 실제 컬럼 이름(소문자)으로 변환합니다."""
+        return logical_name.lower()

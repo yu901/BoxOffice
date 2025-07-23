@@ -106,9 +106,9 @@ class TheaterEventScraper(abc.ABC):
 
         # 3. 최근 목록에 없으면 전체 movie 테이블에서 다시 검색합니다.
         self.logger.info(f"'{title}'을(를) 최근/개봉예정 목록에서 찾지 못했습니다. 전체 DB를 검색합니다.")
-        query2 = "SELECT movieNm FROM movie"
+        query2 = "SELECT movie_nm FROM movie"
         df2 = self.db_connector.select_query(query2)
-        all_movies = df2['movieNm'].tolist() if not df2.empty else []
+        all_movies = df2['movie_nm'].tolist() if not df2.empty else []
 
         best_match_from_all = find_best_match(all_movies, cleaned_title)
         if best_match_from_all:

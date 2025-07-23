@@ -1,6 +1,7 @@
 import sqlite3
 import pandas as pd
 from sqlalchemy import create_engine, types
+import re
 from typing import List, Dict
 from .config import SQLiteConfig
 from .base_connector import BaseDatabaseConnector
@@ -119,6 +120,7 @@ class SQLiteConnector(BaseDatabaseConnector):
         })
 
     def insert_movie(self, df: pd.DataFrame):
+        df.columns = [self._get_db_column_name(col) for col in df.columns]
         df.to_sql("movie", self.engine, if_exists='append', index=False)
 
     def select_query(self, query: str) -> pd.DataFrame:
@@ -127,3 +129,6 @@ class SQLiteConnector(BaseDatabaseConnector):
             return pd.read_sql_query(query, conn)
         finally:
             conn.close()
+
+    def _get_db_column_name(self, logical_name: str) -> str:
+        return logical_name
