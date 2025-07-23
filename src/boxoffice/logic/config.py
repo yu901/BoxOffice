@@ -32,3 +32,15 @@ class GeminiConfig(BaseConfig):
     def __init__(self):
         super().__init__()
         self.api_key = self.config["gemini"]["api_key"]
+
+class SupabaseConfig(BaseConfig):
+    def __init__(self):
+        super().__init__()
+        self.url = self.config["supabase"]["url"]
+        self.service_role_key = self.config["supabase"]["service_role_key"]
+
+class DatabaseConfig(BaseConfig):
+    def __init__(self):
+        super().__init__()
+        self.type = self.config["database"]["type"]
+

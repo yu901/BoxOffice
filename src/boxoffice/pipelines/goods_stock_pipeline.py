@@ -1,6 +1,6 @@
 from dagster import job, op, In, Out, get_dagster_logger, ScheduleDefinition
 from datetime import datetime
-from ..logic.sqlite_connector import SQLiteConnector
+from ..logic.database_manager import get_database_connector
 import pandas as pd
 from typing import List, Dict
 
@@ -32,7 +32,7 @@ def get_all_events() -> List[UnifiedEvent]:
 def get_events_from_db() -> List[Dict]:
     """DB에 저장된 이벤트 목록 중 종료되지 않은 이벤트만 가져옵니다."""
     logger = get_dagster_logger()
-    db = SQLiteConnector()
+    db = get_database_connector()
     events_df = db.select_query("SELECT * FROM goods_event")
 
     if events_df.empty:
@@ -92,7 +92,7 @@ def save_events_to_db(events: List[Dict]):
         logger.info("저장할 이벤트 정보가 없습니다.")
         return
 
-    db = SQLiteConnector()
+    db = get_database_connector()
     conn = None
     try:
         conn = db._get_connection()
@@ -149,20 +149,21 @@ def save_events_to_db(events: List[Dict]):
         if conn:
             conn.close()
 
-@op(ins={"stocks": In(List[Dict])})
+@op(ins={"stocks": In(List[Dict])}, out=Out(pd.DataFrame))
 def save_stocks_to_db(stocks: List[Dict]):
     """재고 정보를 데이터베이스에 저장합니다."""
     logger = get_dagster_logger()
     if not stocks:
         logger.info("저장할 재고 정보가 없습니다.")
-        return
+        return pd.DataFrame()
 
-    db = SQLiteConnector()
+    db = get_database_connector()
     stocks_df = pd.DataFrame(stocks)
     stocks_df["scraped_at"] = datetime.now()
     
     db.insert_goods_stock(stocks_df)
     logger.info(f"총 {len(stocks_df)}건의 재고 정보를 DB에 저장했습니다.")
+    return stocks_df
 
 @job
 def goods_events_job():
@@ -175,7 +176,7 @@ def goods_stock_check_job():
     """영화관 굿즈 재고를 주기적으로 확인하고 저장하는 작업"""
     events = get_events_from_db()
     stocks = get_all_stocks(events)
-    save_stocks_to_db(stocks)
+    stocks_df_result = save_stocks_to_db(stocks)
 
 goods_events_schedule = ScheduleDefinition(
     job=goods_events_job,

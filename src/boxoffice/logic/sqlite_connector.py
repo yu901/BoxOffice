@@ -1,9 +1,11 @@
 import sqlite3
 import pandas as pd
 from sqlalchemy import create_engine, types
+from typing import List, Dict
 from .config import SQLiteConfig
+from .base_connector import BaseDatabaseConnector
 
-class SQLiteConnector:
+class SQLiteConnector(BaseDatabaseConnector):
     def __init__(self):
         self.config = SQLiteConfig()
         self.db_path = self.config.db_path
@@ -67,25 +69,28 @@ class SQLiteConnector:
             cursor.close()
             conn.close()
 
-    def insert_boxoffice(self, df):
+    def insert_boxoffice(self, df: pd.DataFrame):
         df.to_sql("boxoffice", self.engine, if_exists='append', index=False)
 
-    def insert_goods_event(self, df):
+    def insert_goods_event(self, events: List[Dict]):
         """굿즈 이벤트 정보를 DB에 저장합니다."""
+        if not events:
+            return
+        df = pd.DataFrame(events)
         df.to_sql("goods_event", self.engine, if_exists='append', index=False, dtype={
             'event_id': types.TEXT,
         })
 
-    def insert_goods_stock(self, df):
+    def insert_goods_stock(self, df: pd.DataFrame):
         """굿즈 재고 정보를 DB에 저장합니다."""
         df.to_sql("goods_stock", self.engine, if_exists='append', index=False, dtype={
             'scraped_at': types.DateTime,
         })
 
-    def insert_movie(self, df):
+    def insert_movie(self, df: pd.DataFrame):
         df.to_sql("movie", self.engine, if_exists='append', index=False)
 
-    def select_query(self, query):
+    def select_query(self, query: str) -> pd.DataFrame:
         conn = self._get_connection()
         try:
             return pd.read_sql_query(query, conn)
