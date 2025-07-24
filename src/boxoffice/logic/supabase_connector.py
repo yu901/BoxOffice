@@ -84,16 +84,17 @@ class SupabaseConnector(BaseDatabaseConnector):
 
             self._upsert_data('goods_stock', df.to_dict(orient='records'), 'event_id,theater_name,scraped_at')
 
-    def select_query(self, query: str) -> pd.DataFrame:
+    def select_query(self, sql: str) -> pd.DataFrame:
         try:
-            table_name = query.split('FROM')[1].strip().split(' ')[0]
-            # Supabase는 컬럼 이름을 소문자로 반환하므로, 쿼리도 소문자로 변환
-            db_table_name = self._get_db_column_name(table_name)
-            response = self.client.table(db_table_name).select('*').execute()
+            # RPC를 호출하여 SQL 실행
+            response = self.client.rpc('execute_sql', {'sql_query': sql}).execute()
             
-            df = pd.DataFrame(response.data)
-            
-            return df
+            # 응답 데이터 처리
+            if response.data:
+                return pd.DataFrame(response.data)
+            else:
+                return pd.DataFrame()
+
         except Exception as e:
             print(f"An error occurred during select_query: {e}")
             return pd.DataFrame()
