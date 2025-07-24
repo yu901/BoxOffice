@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from boxoffice.logic.sqlite_connector import SQLiteConnector
+from boxoffice.logic.database_manager import get_database_connector
 import altair as alt
 from boxoffice.logic.ai_agent import AIAgent
 
@@ -73,7 +73,7 @@ st.markdown("""
 @st.cache_data(ttl=600) # Cache data for 10 minutes
 def load_data():
     """Loads data from the SQLite database."""
-    db = SQLiteConnector()
+    db = get_database_connector()
     boxoffice_df = db.select_query("SELECT * FROM boxoffice ORDER BY target_dt DESC, rank ASC")
     stock_df = db.select_query("SELECT * FROM goods_stock")
     event_df = db.select_query("SELECT * FROM goods_event ORDER BY start_date DESC")
@@ -182,7 +182,7 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
     st.header("기간 선택")
     cols = st.columns(2)
     with cols[0]:
-        start_date = st.date_input("시작일", value=max_db_date - pd.Timedelta(days=30), min_value=min_db_date, max_value=max_db_date)
+        start_date = st.date_input("시작일", value=max(min_db_date, max_db_date - pd.Timedelta(days=30)), min_value=min_db_date, max_value=max_db_date)
     with cols[1]:
         end_date = st.date_input("종료일", value=max_db_date, min_value=min_db_date, max_value=max_db_date)
 

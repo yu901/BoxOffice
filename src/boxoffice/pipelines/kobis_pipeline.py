@@ -25,7 +25,7 @@ def extract_kobis_data(context):
     else:
         # 마지막 날짜의 다음날부터 수집 시작
         latest_date_in_db = pd.to_datetime(latest_date_df['max_date'].iloc[0]).date()
-        start_date = (latest_date_in_db + timedelta(days=1)).date()
+        start_date = (latest_date_in_db + timedelta(days=1))
 
     boxoffice_df = pd.DataFrame()
     all_boxoffice_dfs = []
