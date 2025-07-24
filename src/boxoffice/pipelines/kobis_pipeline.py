@@ -15,7 +15,7 @@ def extract_kobis_data(context):
     yesterday = datetime.now() - timedelta(days=1)
     
     # DB에서 가장 최근 데이터 날짜 조회
-    latest_date_df = db.select_query("SELECT MAX(targetDt) as max_date FROM boxoffice")
+    latest_date_df = db.select_query("SELECT MAX(target_dt) as max_date FROM boxoffice")
     
     start_date = None
     # DB에 데이터가 없거나 날짜가 없는 경우, 최근 7일치 수집

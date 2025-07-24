@@ -58,12 +58,12 @@ class SupabaseConnector(BaseDatabaseConnector):
     def insert_boxoffice(self, df: pd.DataFrame):
         print(f"[SupabaseConnector] Attempting to insert {len(df)} rows into boxoffice.")
         if not df.empty:
-            self._upsert_data('boxoffice', df.to_dict(orient='records'), 'movieCd,targetDt')
+            self._upsert_data('boxoffice', df.to_dict(orient='records'), 'movie_cd,target_dt')
 
     def insert_movie(self, df: pd.DataFrame):
         print(f"[SupabaseConnector] Attempting to insert {len(df)} rows into movie.")
         if not df.empty:
-            self._upsert_data('movie', df.to_dict(orient='records'), 'movieCd')
+            self._upsert_data('movie', df.to_dict(orient='records'), 'movie_cd')
 
     def insert_goods_event(self, events: List[Dict]):
         print(f"[SupabaseConnector] Attempting to insert {len(events)} rows into goods_event.")

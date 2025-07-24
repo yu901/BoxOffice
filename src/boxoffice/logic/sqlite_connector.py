@@ -24,19 +24,19 @@ class SQLiteConnector(BaseDatabaseConnector):
         try:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS boxoffice (
-                rnum INTEGER, rank INTEGER, rankInten INTEGER, rankOldAndNew TEXT,
-                movieCd TEXT, movieNm TEXT, openDt DATE,
-                salesAmt REAL, salesShare REAL, salesInten REAL, salesChange REAL, salesAcc REAL,
-                audiCnt REAL, audiInten REAL, audiChange REAL, audiAcc REAL,
-                scrnCnt REAL, showCnt REAL, targetDt DATE, elapsedDt INTEGER
+                rnum INTEGER, rank INTEGER, rank_inten INTEGER, rank_old_and_new TEXT,
+                movie_cd TEXT, movie_nm TEXT, open_dt DATE,
+                sales_amt REAL, sales_share REAL, sales_inten REAL, sales_change REAL, sales_acc REAL,
+                audi_cnt REAL, audi_inten REAL, audi_change REAL, audi_acc REAL,
+                scrn_cnt REAL, show_cnt REAL, target_dt DATE, elapsed_dt INTEGER
             );
             """)
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS movie (
-                movieCd TEXT, movieNm TEXT, movieNmEn TEXT,
-                prdtYear TEXT, openDt DATE, typeNm TEXT,
-                prdtStatNm TEXT, nationAlt TEXT, genreAlt TEXT,
-                repNationNm TEXT, repGenreNm TEXT,
+                movie_cd TEXT, movie_nm TEXT, movie_nm_en TEXT,
+                prdt_year TEXT, open_dt DATE, type_nm TEXT,
+                prdt_stat_nm TEXT, nation_alt TEXT, genre_alt TEXT,
+                rep_nation_nm TEXT, rep_genre_nm TEXT,
                 directors TEXT, companys TEXT
             );
             """)
