@@ -198,7 +198,7 @@ class CGVScraper(TheaterEventScraper):
             if items and isinstance(items, list) and len(items) > 0:
                 return {
                     "id": items[0].get("spmtlProdNo"),
-                    "name": items[0].get("spmtlProd_nm"),
+                    "name": items[0].get("spmtlProdNm"),
                     "spmtlNo": items[0].get("spmtlNo")
                 }
         except requests.RequestException as e:
@@ -253,7 +253,7 @@ class CGVScraper(TheaterEventScraper):
                     for item in event_list:
                         event_no = item.get("evntNo")
                         self.logger.debug(f"Processing movie event: {event_no}")
-                        event_name = item.get("evnt_nm")
+                        event_name = item.get("evntNm")
                         
                         # movie_title 추출
                         movie_title = None
@@ -262,8 +262,8 @@ class CGVScraper(TheaterEventScraper):
                             movie_title = self._normalize_movie_title(match.group(1).strip())
 
                         # 날짜 형식 변환
-                        start_date_str = item.get("evntStart_dt", "").split(" ")[0].replace("-", "")
-                        end_date_str = item.get("evntEnd_dt", "").split(" ")[0].replace("-", "")
+                        start_date_str = item.get("evntStartDt", "").split(" ")[0].replace("-", "")
+                        end_date_str = item.get("evntEndDt", "").split(" ")[0].replace("-", "")
                         start_date = f"{start_date_str[:4]}.{start_date_str[4:6]}.{start_date_str[6:]}" if start_date_str and len(start_date_str) == 8 else start_date_str
                         end_date = f"{end_date_str[:4]}.{end_date_str[4:6]}.{end_date_str[6:]}" if end_date_str and len(end_date_str) == 8 else end_date_str
 
@@ -403,7 +403,7 @@ class CGVScraper(TheaterEventScraper):
                         if not event_idx:
                             continue
 
-                        event_name = event.get("evntOnlnExpo_nm") or event.get("saprmEvnt_nm")
+                        event_name = event.get("saprmEvntNm") or event.get("evntOnlnExpoNm")
                         goods_info = self._get_goods_info(event_idx)
                         
                         goods_id = None
@@ -434,7 +434,7 @@ class CGVScraper(TheaterEventScraper):
                             start_date=start_date,
                             end_date=end_date,
                             event_url=f"https://cgv.co.kr/evt/giveawayStateDetail?saprmEvntNo={event_idx}",
-                            image_url=event.get("attchFilePath_nm"),
+                            image_url=event.get("attchFilePathNm"),
                             event_id=event_idx,
                             goods_id=goods_id,
                             spmtl_no=spmtl_no
@@ -503,7 +503,7 @@ class CGVScraper(TheaterEventScraper):
                 
                 all_stocks.append(UnifiedStock(
                     theater_chain=self.chain_name,
-                    theater_name=theater.get("site_nm", "알 수 없음"),
+                    theater_name=theater.get("siteNm", "알 수 없음"),
                     status=status_standard,
                     quantity=quantity,
                     total_quantity=tot_pay_qty
@@ -575,7 +575,7 @@ class LotteCinemaScraper(TheaterEventScraper):
                 
                 goods_info = goods_items[0]
                 goods_id = goods_info.get("FrGiftID")
-                goods_full_name = goods_info.get("FrGift_nm", "")
+                goods_full_name = goods_info.get("FrGiftNm", "")
 
                 # 영화 제목 및 굿즈 이름 파싱
                 movie_title_match = re.search(r'<([^<>]+)>', event_name)
@@ -626,7 +626,7 @@ class LotteCinemaScraper(TheaterEventScraper):
 
         all_stocks = []
         for theater in data["CinemaDivisionGoods"]:
-            quantity_str = theater.get("_cnt", "0")
+            quantity_str = theater.get("Cnt", "0")
             try:
                 quantity = int(quantity_str)
             except (ValueError, TypeError):
