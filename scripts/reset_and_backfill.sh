@@ -21,10 +21,13 @@ echo "1. 기존 데이터베이스 파일 삭제 중..."
 rm -f "$DB_FILE"
 echo "   => 데이터베이스 파일 삭제 완료."
 
-echo "2. 박스오피스 데이터 백필 실행 중..."
+echo "2. 영화 데이터 백필 실행 중..."
+python src/scripts/backfill_movie.py
+
+echo "3. 박스오피스 데이터 백필 실행 중..."
 python src/scripts/backfill_boxoffice.py
 
-echo "3. 굿즈 이벤트 데이터 백필 실행 중..."
+echo "4. 굿즈 이벤트 데이터 백필 실행 중..."
 python src/scripts/backfill_goods_events.py
 
 echo "✅ 모든 백필 작업이 완료되었습니다."

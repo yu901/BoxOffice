@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
-from ..boxoffice.logic.sqlite_connector import SQLiteConnector
-from ..boxoffice.logic.movie_events_scraper import (
+from src.boxoffice.logic.sqlite_connector import SQLiteConnector
+from src.boxoffice.logic.movie_events_scraper import (
     CGVScraper,
     LotteCinemaScraper,
     MegaboxScraper,
@@ -35,7 +35,7 @@ def backfill_all_goods_events():
         return
 
     new_events_df = pd.DataFrame(all_events).drop_duplicates(subset=['event_id'])
-    db.insert_goods_event(new_events_df)
+    db.insert_goods_event(new_events_df.to_dict('records'))
     logger.info(f"총 {len(new_events_df)}건의 이벤트를 DB에 저장(또는 업데이트)했습니다.")
     logger.info("이벤트 백필 작업 완료.")
 
