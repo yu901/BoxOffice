@@ -117,7 +117,7 @@ chmod +x scripts/*.sh
 ### 서비스 접속
 
 - **Dagster UI**: 웹 브라우저에서 `http://localhost:3000` 주소로 접속하세요.
-- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소 또는 [https://boxoffice-dashboard.streamlit.app/](https://boxoffice-dashboard.streamlit.app/) 에 접속하여 다양한 기능을 사용해 보세요.
+- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소 또는 [https://boxoffice-overview.streamlit.app/](https://boxoffice-overview.streamlit.app/) 에 접속하여 다양한 기능을 사용해 보세요.
 
 ### 서비스 중지
 
