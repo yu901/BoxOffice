@@ -85,18 +85,51 @@ class SupabaseConnector(BaseDatabaseConnector):
             self._upsert_data('goods_stock', df.to_dict(orient='records'), 'event_id,theater_name,scraped_at')
 
     def select_query(self, sql: str) -> pd.DataFrame:
-        try:
-            # RPC를 호출하여 SQL 실행
-            response = self.client.rpc('execute_sql', {'sql_query': sql}).execute()
-            
-            # 응답 데이터 처리
-            if response.data:
-                return pd.DataFrame(response.data)
-            else:
+        """
+        Executes a SQL query and returns the result as a pandas DataFrame.
+        Handles PostgREST's 1000-row limit by paginating through the results
+        for SELECT queries.
+        """
+        # non-SELECT 쿼리의 경우, 페이지네이션 없이 단일 RPC 호출을 사용합니다.
+        if not sql.strip().lower().startswith('select'):
+            try:
+                response = self.client.rpc('execute_sql', {'sql_query': sql}).execute()
+                if response.data:
+                    return pd.DataFrame(response.data)
+                return pd.DataFrame()
+            except Exception as e:
+                print(f"An error occurred during non-SELECT query: {e}")
                 return pd.DataFrame()
 
+        try:
+            all_data = []
+            offset = 0
+            limit = 1000  # PostgREST 기본 제한
+
+            clean_sql = sql.strip().rstrip(';')
+
+            while True:
+                # 페이지네이션을 위해 LIMIT과 OFFSET을 추가합니다.
+                paginated_sql = f"{clean_sql} LIMIT {limit} OFFSET {offset}"
+                
+                response = self.client.rpc('execute_sql', {'sql_query': paginated_sql}).execute()
+                
+                # 더 이상 데이터가 없으면 루프를 종료합니다.
+                if not response.data:
+                    break
+                
+                all_data.extend(response.data)
+                
+                # 현재 페이지의 데이터가 limit보다 작으면 마지막 페이지입니다.
+                if len(response.data) < limit:
+                    break
+                
+                offset += limit
+                
+            return pd.DataFrame(all_data)
+
         except Exception as e:
-            print(f"An error occurred during select_query: {e}")
+            print(f"An error occurred during paginated select_query: {e}")
             return pd.DataFrame()
 
     def _get_db_column_name(self, logical_name: str) -> str:

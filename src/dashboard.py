@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from boxoffice.logic.sqlite_connector import SQLiteConnector
+from boxoffice.logic.database_manager import get_database_connector
 import altair as alt
 from boxoffice.logic.ai_agent import AIAgent
 
@@ -72,13 +72,64 @@ st.markdown("""
 
 @st.cache_data(ttl=600) # Cache data for 10 minutes
 def load_data():
-    """Loads data from the SQLite database."""
-    db = SQLiteConnector()
-    boxoffice_df = db.select_query("SELECT * FROM boxoffice ORDER BY target_dt DESC, rank ASC")
-    stock_df = db.select_query("SELECT * FROM goods_stock")
-    event_df = db.select_query("SELECT * FROM goods_event ORDER BY start_date DESC")
-    movie_details_df = db.select_query("SELECT movie_cd, rep_genre_nm FROM movie") # Added for genre KPI
-    return boxoffice_df, stock_df, event_df, movie_details_df
+    """Loads filtered data from the database for efficiency."""
+    db = get_database_connector()
+    
+    # 1. 박스오피스: 필요한 컬럼만 선택하여 모든 기간의 데이터를 로드
+    boxoffice_query = """
+    SELECT 
+        target_dt, rank, movie_nm, audi_cnt, 
+        audi_inten, audi_acc, sales_amt, open_dt, movie_cd
+    FROM boxoffice
+    ORDER BY target_dt DESC, rank ASC
+    """
+    boxoffice_df = db.select_query(boxoffice_query)
+
+    # 2. 굿즈 이벤트: 종료되지 않은 이벤트만 로드 (타입 변환 추가)
+    event_query = """
+    SELECT * FROM goods_event
+    WHERE CAST(end_date AS date) >= date('now')
+    ORDER BY start_date DESC
+    """
+    event_df = db.select_query(event_query)
+    
+    # 3. 영화 상세 정보 (장르)
+    movie_details_df = db.select_query("SELECT movie_cd, rep_genre_nm FROM movie")
+    
+    return boxoffice_df, event_df, movie_details_df
+
+@st.cache_data(ttl=60) # Cache stock data for 1 minute
+def get_stock_data_for_event(event_id: str):
+    """Fetches the latest stock data for a specific event_id."""
+    db = get_database_connector()
+    stock_query = f"""
+    WITH ranked_stock AS (
+        SELECT
+            s.*,
+            CAST(s.event_id AS TEXT) as event_id_str, -- event_id를 문자열로 캐스팅
+            ROW_NUMBER() OVER(PARTITION BY s.event_id, s.theater_name ORDER BY s.scraped_at DESC) as rn
+        FROM
+            goods_stock s
+    )
+    SELECT *
+    FROM ranked_stock
+    WHERE rn = 1 AND event_id_str = '{event_id}'
+    """
+    stock_df = db.select_query(stock_query)
+    return stock_df
+
+@st.cache_data(ttl=60) # Cache for 1 minute
+def get_latest_overall_stock_scrape_time():
+    """Fetches the latest scraped_at timestamp from the entire goods_stock table."""
+    db = get_database_connector()
+    query = """
+    SELECT MAX(scraped_at) as latest_scrape_time
+    FROM goods_stock
+    """
+    result = db.select_query(query)
+    if not result.empty and result['latest_scrape_time'].iloc[0]:
+        return pd.to_datetime(result['latest_scrape_time'].iloc[0])
+    return None
 
 def show_boxoffice_dashboard(df):
     """Displays the daily box office dashboard."""
@@ -182,7 +233,8 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
     st.header("기간 선택")
     cols = st.columns(2)
     with cols[0]:
-        start_date = st.date_input("시작일", value=max_db_date - pd.Timedelta(days=30), min_value=min_db_date, max_value=max_db_date)
+        default_start_date = max(min_db_date, max_db_date - pd.Timedelta(days=30))
+        start_date = st.date_input("시작일", value=default_start_date, min_value=min_db_date, max_value=max_db_date)
     with cols[1]:
         end_date = st.date_input("종료일", value=max_db_date, min_value=min_db_date, max_value=max_db_date)
 
@@ -314,38 +366,20 @@ def show_overall_boxoffice_dashboard(df, movie_details_df):
 
     st.altair_chart(combined_trend_chart, use_container_width=True)
 
-def show_goods_stock_dashboard(stock_df, events_df):
+def show_goods_stock_dashboard(events_df):
     """Displays the goods stock dashboard."""
     st.title("🎁 굿즈 재고 현황")
 
-    if events_df.empty:
-        st.info("현재 진행중인 굿즈 이벤트가 없습니다.")
-        return
-
-    # Display latest stock update time if stock data exists
-    if not stock_df.empty:
-        # DB에서 읽어온 scraped_at은 문자열일 수 있으므로 datetime으로 변환
-        stock_df['scraped_at'] = pd.to_datetime(stock_df['scraped_at'])
-        latest_scrape_time = stock_df['scraped_at'].max()
-        st.subheader(f"⏰ 마지막 업데이트: {latest_scrape_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        # 가장 최근 재고 데이터만 사용
-        latest_stock_df = stock_df[stock_df['scraped_at'] == latest_scrape_time].copy()
+    # Display latest overall stock update time
+    latest_overall_scrape_time = get_latest_overall_stock_scrape_time()
+    if latest_overall_scrape_time:
+        st.subheader(f"⏰ 마지막 업데이트: {latest_overall_scrape_time.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
-        st.warning("수집된 재고 데이터가 없습니다. 이벤트 목록만 표시됩니다.")
-        latest_stock_df = pd.DataFrame()
-
-    # 원본 이벤트 데이터프레임은 필터링을 위해 유지
-    events_df_original = events_df.copy()
+        st.info("재고 데이터가 아직 수집되지 않았습니다.")
 
     if events_df.empty:
         st.info("현재 진행중인 굿즈 이벤트가 없습니다.")
         return
-
-    # 종료일이 지난 이벤트는 필터링합니다.
-    # errors='coerce'는 잘못된 날짜 형식을 NaT (Not a Time)으로 변환하여 오류를 방지합니다.
-    # 한국 시간(KST)을 기준으로 현재 날짜와 비교합니다.
-    events_df['end_date_dt'] = pd.to_datetime(events_df['end_date'], errors='coerce').dt.tz_localize('Asia/Seoul')
-    events_df = events_df[events_df['end_date_dt'] >= pd.Timestamp.now(tz='Asia/Seoul').normalize()]
 
     # --- 필터링 UI ---
     filter_cols = st.columns(2)
@@ -475,10 +509,15 @@ def show_goods_stock_dashboard(stock_df, events_df):
 
     with st.expander(expander_title, expanded=True):
         if not checked_rows.empty:
-            if not latest_stock_df.empty:
-                selected_row = checked_rows.iloc[-1]
-                selected_event_id = selected_row['event_id']
-                selected_image_url = selected_row.get('image_url') # Get image_url
+            selected_row = checked_rows.iloc[-1]
+            selected_event_id = selected_row['event_id']
+            selected_image_url = selected_row.get('image_url') # Get image_url
+
+            # Fetch stock data for the selected event_id
+            stock_df = get_stock_data_for_event(selected_event_id)
+
+            if not stock_df.empty:
+                stock_df['scraped_at'] = pd.to_datetime(stock_df['scraped_at'])
 
                 # Display image and stock data side-by-side
                 col_img, col_table = st.columns([2, 3]) # Adjust column width ratio as needed
@@ -494,10 +533,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
                         st.markdown("""<div class="custom-image-wrapper">이미지 없음</div>""", unsafe_allow_html=True)
 
                 with col_table:
-                    stock_display_df = latest_stock_df[
-                        latest_stock_df['event_id'] == selected_event_id
-                    ]
-                    stock_display_df = stock_display_df.sort_values(by='theater_name')
+                    stock_display_df = stock_df.sort_values(by='theater_name')
                     stock_display_cols = {"theater_name": "지점명", "status": "재고 상태"}
                     
                     # 재고 상태에 따라 색상을 적용하는 함수 (Series 전체에 적용)
@@ -513,7 +549,7 @@ def show_goods_stock_dashboard(stock_df, events_df):
                     display_data = stock_display_df[list(stock_display_cols.keys())].rename(columns=stock_display_cols)
                     st.dataframe(display_data.style.apply(color_status, subset=['재고 상태']), hide_index=True, height=400, use_container_width=True)
             else:
-                st.warning("재고 현황을 보려면 재고 수집 작업이 실행되어야 합니다.")
+                st.warning("선택된 이벤트에 대한 재고 데이터가 없습니다.")
         else:
             st.info('지점별 재고 현황을 확인하려면 현재 진행중인 굿즈 이벤트의 재고 보기를 클릭하세요.')
 
@@ -568,7 +604,7 @@ def show_ai_chat_dashboard():
         st.session_state.ai_messages.append({"role": "assistant", "content": answer, "sql": sql_query})
 
 def main():
-    boxoffice_df, stock_df, event_df, movie_details_df = load_data()
+    boxoffice_df, event_df, movie_details_df = load_data()
 
     st.sidebar.title("대시보드 선택")
     page = st.sidebar.radio("이동", ["영화 데이터 챗봇", "기간별 박스오피스", "일일 박스오피스", "굿즈 재고 현황"])
@@ -580,7 +616,7 @@ def main():
     elif page == "일일 박스오피스":
         show_boxoffice_dashboard(boxoffice_df)
     elif page == "굿즈 재고 현황":
-        show_goods_stock_dashboard(stock_df, event_df)
+        show_goods_stock_dashboard(event_df)
 
 if __name__ == "__main__":
     main()
