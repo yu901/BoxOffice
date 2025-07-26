@@ -47,54 +47,54 @@ class AIAgent:
         {self.schema}
         
         [movie 테이블 스키마]
-        movieCd	영화코드
-        movieNm	영화명(국문)
-        movieNmEn	영화명(영문)
-        prdtYear	제작연도
-        openDt	개봉일
-        typeNm	영화유형
-        prdtStatNm	제작상태
-        nationAlt	제작국가(전체)
-        genreAlt	영화장르(전체)
-        repNationNm	대표 제작국가명
-        repGenreNm	대표 장르명
+        movie_cd	영화코드
+        movie_nm	영화명(국문)
+        movie_nm_en	영화명(영문)
+        prdt_year	제작연도
+        open_dt	개봉일
+        type_nm	영화유형
+        prdt_stat_nm	제작상태
+        nation_alt	제작국가(전체)
+        genre_alt	영화장르(전체)
+        rep_nation_nm	대표 제작국가명
+        rep_genre_nm	대표 장르명
         directors	영화감독
-        peopleNm	영화감독명
+        people_nm	영화감독명
         companys	제작사
-        companyCd	제작사 코드
-        companyNm	제작사명
+        company_cd	제작사 코드
+        company_nm	제작사명
 
         [boxoffice 테이블 스키마]
-        boxofficeType	박스오피스 종류
-        showRange	박스오피스 조회 일자
+        boxoffice_type	박스오피스 종류
+        show_range	박스오피스 조회 일자
         rnum	순번
         rank	해당일자의 박스오피스 순위
-        rankInten	전일대비 순위의 증감분
-        rankOldAndNew	랭킹에 신규진입여부 (“OLD” : 기존 , “NEW” : 신규)
-        movieCd	영화의 대표코드
-        movieNm	영화명(국문)
-        openDt	영화의 개봉일
-        salesAmt	해당일의 매출액
-        salesShare	해당일자 상영작의 매출총액 대비 해당 영화의 매출비율
-        salesInten	전일 대비 매출액 증감분
-        salesChange	전일 대비 매출액 증감 비율
-        salesAcc	누적매출액
-        audiCnt	해당일의 관객수
-        audiInten	전일 대비 관객수 증감분
-        audiChange	전일 대비 관객수 증감 비율
-        audiAcc	누적관객수
-        scrnCnt	해당일자에 상영한 스크린수
-        showCnt	해당일자에 상영된 횟수
-        targetDt	박스오피스 조회 일자
+        rank_inten	전일대비 순위의 증감분
+        rank_old_and_new	랭킹에 신규진입여부 (“OLD” : 기존 , “NEW” : 신규)
+        movie_cd	영화의 대표코드
+        movie_nm	영화명(국문)
+        open_dt	영화의 개봉일
+        sales_amt	해당일의 매출액
+        sales_share	해당일자 상영작의 매출총액 대비 해당 영화의 매출비율
+        sales_inten	전일 대비 매출액 증감분
+        sales_change	전일 대비 매출액 증감 비율
+        sales_acc	누적매출액
+        audi_cnt	해당일의 관객수
+        audi_inten	전일 대비 관객수 증감분
+        audi_change	전일 대비 관객수 증감 비율
+        audi_acc	누적관객수
+        scrn_cnt	해당일자에 상영한 스크린수
+        show_cnt	해당일자에 상영된 횟수
+        target_dt	박스오피스 조회 일자
 
         [규칙]
-        - 날짜 관련 질문은 'YYYY-MM-DD' 형식을 사용하세요. (예: `date(targetDt)`)
+        - 날짜 관련 질문은 'YYYY-MM-DD' 형식을 사용하세요. (예: `date(target_dt)`)
         - `LIKE`를 사용할 때는 `%` 와일드카드를 적절히 사용하세요.
         - 생성된 쿼리는 SQLite에서 실행 가능해야 합니다.
         - 쿼리 외에 다른 말은 절대 하지 마세요.
         - movie 테이블의 directors와 companys 컬럼은 JSON 형태의 문자열입니다. 이 컬럼들을 직접 쿼리하는 대신, 필요한 경우 `LIKE`와 `%`를 사용하여 JSON 문자열 내의 특정 값을 검색하세요. 예를 들어, 특정 감독의 영화를 찾으려면 `directors LIKE '%감독이름%'`과 같이 사용합니다.
         - `directors` 또는 `companys` 컬럼이 비어있는 리스트(`'[]'`)이거나 NULL인 경우는 집계에서 제외하세요. 예를 들어, `WHERE directors IS NOT NULL AND directors != '[]'`와 같이 조건을 추가하여 필터링합니다.
-        - 사용자는 영화 제목을 정확하게 입력하지 않을 수 있습니다. 예를 들어, 사용자가 "어벤져스엔드게임"이라고 입력하면, 데이터베이스에 저장된 "어벤져스 엔드게임"과 비교해야 합니다. 따라서 쿼리에서 `movieNm`을 비교할 때는 `REPLACE(movieNm, ' ', '')` 함수를 사용하여 띄어쓰기를 제거한 후 `LIKE`와 `%`를 활용하여 검색하세요. **예시: `SELECT * FROM movie WHERE REPLACE(movieNm, ' ', '') LIKE '%어벤져스엔드게임%';`**
+        - 사용자는 영화 제목을 정확하게 입력하지 않을 수 있습니다. 예를 들어, 사용자가 "어벤져스엔드게임"이라고 입력하면, 데이터베이스에 저장된 "어벤져스 엔드게임"과 비교해야 합니다. 따라서 쿼리에서 `movie_nm`을 비교할 때는 `REPLACE(movie_nm, ' ', '')` 함수를 사용하여 띄어쓰기를 제거한 후 `LIKE`와 `%`를 활용하여 검색하세요. **예시: `SELECT * FROM movie WHERE REPLACE(movie_nm, ' ', '') LIKE '%어벤져스엔드게임%';`**
         - 사용자가 질문한 데이터 필드 외에 대표적인 필드 값도 같이 보여주세요. 예를 들어, 사용자가 "어벤져스 엔드게임의 감독은 누구인가요?"라고 질문하면, 쿼리 결과에 영화 제목과 감독 이름을 포함시켜야 합니다.
         - 사용자가 질문한 데이터 필드 값이 없다면 다른 필드 값이라도 보여주세요. 예를 들어, 사용자가 "가장 매출이 큰 영화의 제작사는?"라고 질문했을 때, 만약 제작사가 없다면 다른 필드 값(예: 가장 매출이 큰 영화의 영화제목과 매출액)을 보여주세요.
 
@@ -136,7 +136,7 @@ class AIAgent:
         if 'directors' in display_result.columns:
             display_result['directors'] = display_result['directors'].apply(lambda x: ', '.join(json.loads(x)) if pd.notna(x) and x != '[]' else '')
         if 'companys' in display_result.columns:
-            display_result['companys'] = display_result['companys'].apply(lambda x: ', '.join([c['companyNm'] for c in json.loads(x)]) if pd.notna(x) and x != '[]' else '')
+            display_result['companys'] = display_result['companys'].apply(lambda x: ', '.join([c['company_nm'] for c in json.loads(x)]) if pd.notna(x) and x != '[]' else '')
 
         prompt = f"""
         당신은 친절한 영화 데이터 분석가입니다. 사용자의 질문과 데이터베이스 조회 결과를 바탕으로, 자연스러운 한국어 문장으로 답변을 생성해주세요.

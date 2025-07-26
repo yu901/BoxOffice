@@ -66,21 +66,21 @@ class TheaterEventScraper(abc.ABC):
 
         # 1. DB에서 최근/개봉예정 영화 후보 목록을 가져옵니다.
         query1 = """
-            SELECT movieNm FROM (
-                SELECT movieNm
+            SELECT movie_nm FROM (
+                SELECT movie_nm
                 FROM boxoffice
-                WHERE DATE(targetDt) >= DATE('now', '-1 days')
-                GROUP BY movieNm
+                WHERE DATE(target_dt) >= DATE('now', '-1 days')
+                GROUP BY movie_nm
                 UNION
-                SELECT movieNm
+                SELECT movie_nm
                 FROM movie
-                WHERE DATE(openDt) > DATE('now', '-1 day')
-                  AND DATE(openDt) < DATE('now', '7 day')
-                  AND movieNm NOT IN (SELECT DISTINCT movieNm FROM boxoffice)
+                WHERE DATE(open_dt) > DATE('now', '-1 day')
+                  AND DATE(open_dt) < DATE('now', '7 day')
+                  AND movie_nm NOT IN (SELECT DISTINCT movie_nm FROM boxoffice)
             )
         """
         df1 = self.db_connector.select_query(query1)
-        candidate_movies = df1['movieNm'].tolist() if not df1.empty else []
+        candidate_movies = df1['movie_nm'].tolist() if not df1.empty else []
 
         # 2. 후보 목록에서 매칭되는 영화를 찾습니다.
         cleaned_title = title.replace(' ', '').replace(':', '').replace('_', '')
@@ -106,9 +106,9 @@ class TheaterEventScraper(abc.ABC):
 
         # 3. 최근 목록에 없으면 전체 movie 테이블에서 다시 검색합니다.
         self.logger.info(f"'{title}'을(를) 최근/개봉예정 목록에서 찾지 못했습니다. 전체 DB를 검색합니다.")
-        query2 = "SELECT movieNm FROM movie"
+        query2 = "SELECT movie_nm FROM movie"
         df2 = self.db_connector.select_query(query2)
-        all_movies = df2['movieNm'].tolist() if not df2.empty else []
+        all_movies = df2['movie_nm'].tolist() if not df2.empty else []
 
         best_match_from_all = find_best_match(all_movies, cleaned_title)
         if best_match_from_all:
@@ -403,7 +403,7 @@ class CGVScraper(TheaterEventScraper):
                         if not event_idx:
                             continue
 
-                        event_name = event.get("evntOnlnExpoNm") or event.get("saprmEvntNm")
+                        event_name = event.get("saprmEvntNm") or event.get("evntOnlnExpoNm")
                         goods_info = self._get_goods_info(event_idx)
                         
                         goods_id = None

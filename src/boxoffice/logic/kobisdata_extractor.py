@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from .config import KobisConfig
+from .utils import camel_to_snake, convert_dict_keys_snake_case, infer_col_types_from_df, auto_cast_dataframe
 
 kobis_config = KobisConfig()
 logger = logging.getLogger(__name__)
@@ -37,7 +38,12 @@ class KobisDataExtractor:
             params,
             ["boxOfficeResult", "dailyBoxOfficeList"]
         )
-        return pd.DataFrame(data) if data else pd.DataFrame()
+        if not data:
+            return pd.DataFrame()
+
+        normalized_list = [convert_dict_keys_snake_case(item) for item in data]
+
+        return pd.DataFrame(normalized_list)
 
     def _request_movie_info(self, movie_cd: str) -> dict:
         params = {"key": self.kobis_key, "movieCd": movie_cd}
@@ -62,7 +68,11 @@ class KobisDataExtractor:
         )
         movie_list = data.get("movieList", []) if data else []
         has_more = bool(movie_list)
-        return pd.DataFrame(movie_list), has_more
+        snake_movie_list = [
+            {camel_to_snake(k): v for k, v in movie.items()}
+            for movie in movie_list
+        ]
+        return pd.DataFrame(snake_movie_list), has_more
 
     def get_MovieList(self, year: int) -> pd.DataFrame:
         all_movies_for_year = []
@@ -80,38 +90,37 @@ class KobisDataExtractor:
             return pd.DataFrame()
 
         movie_list = pd.concat(all_movies_for_year, ignore_index=True)
-        # Process directors
         def process_directors(directors_list):
             if isinstance(directors_list, list):
-                # Use ensure_ascii=False to store actual Korean characters
-                return json.dumps([d.get("peopleNm") for d in directors_list if d.get("peopleNm")] or [], ensure_ascii=False)
-            return "[]" # Default to empty JSON array if not a list
+                snake_list = [convert_dict_keys_snake_case(d) for d in directors_list]
+                return json.dumps(
+                    [d.get("people_nm") for d in snake_list if d.get("people_nm")] or [],
+                    ensure_ascii=False
+                )
+            return "[]"
 
-        movie_list["directors"] = movie_list["directors"].apply(process_directors)
-
-        # Process companys
         def process_companys(companys_list):
             if isinstance(companys_list, list):
-                # Use ensure_ascii=False to store actual Korean characters
-                return json.dumps([{'companyCd': c.get('companyCd'), 'companyNm': c.get('companyNm')} for c in companys_list if c.get('companyCd') and c.get('companyNm')] or [], ensure_ascii=False)
-            return "[]" # Default to empty JSON array if not a list
+                snake_list = [convert_dict_keys_snake_case(c) for c in companys_list]
+                return json.dumps(
+                    [{'company_cd': c.get('company_cd'), 'company_nm': c.get('company_nm')} for c in snake_list if c.get('company_cd') and c.get('company_nm')] or [],
+                    ensure_ascii=False
+                )
+            return "[]"
 
+        # directors 처리 추가
+        movie_list["directors"] = movie_list["directors"].apply(process_directors)
         movie_list["companys"] = movie_list["companys"].apply(process_companys)
 
-        is_not_adult = movie_list["repGenreNm"] != "성인물(에로)"
-        has_eng_title = movie_list["movieNmEn"].str.strip() != ""
+        is_not_adult = movie_list["rep_genre_nm"] != "성인물(에로)"
+        has_eng_title = movie_list["movie_nm_en"].astype(str).str.strip() != ""
         has_directors = movie_list["directors"].apply(lambda x: len(json.loads(x)) > 0 if x else False)
         movie_list = movie_list[is_not_adult & has_eng_title & has_directors].copy()
 
-        # openDt를 YYYY-MM-DD 형식의 문자열로 변환
-        movie_list["openDt"] = pd.to_datetime(movie_list["openDt"], errors='coerce').dt.strftime('%Y-%m-%d')
+        # open_dt를 YYYY-MM-DD 형식의 문자열로 변환
+        movie_list["open_dt"] = pd.to_datetime(movie_list["open_dt"], errors='coerce').dt.strftime('%Y-%m-%d')
 
-        col_types = {
-            "movieCd": "str", "movieNm": "str", "movieNmEn": "str", "prdtYear": "str",
-            "openDt": "str", "typeNm": "str", "prdtStatNm": "str", "nationAlt": "str",
-            "genreAlt": "str", "repNationNm": "str", "repGenreNm": "str",
-            "directors": "str", "companys": "str",
-        }
+        col_types = infer_col_types_from_df(movie_list)
         movie_list = movie_list.astype(col_types)
         return movie_list
 
@@ -124,21 +133,27 @@ class KobisDataExtractor:
         if boxoffice_df.empty:
             return pd.DataFrame()
 
-        boxoffice_df["targetDt"] = pd.to_datetime(target_dt.date())
-        boxoffice_df["openDt"] = pd.to_datetime(boxoffice_df["openDt"], errors='coerce')
-        boxoffice_df = boxoffice_df.dropna(subset=['openDt'])
+        boxoffice_df["target_dt"] = pd.to_datetime(target_dt.date())
+        boxoffice_df["open_dt"] = pd.to_datetime(boxoffice_df["open_dt"], errors='coerce')
+        boxoffice_df = boxoffice_df.dropna(subset=['open_dt'])
 
-        col_types = {
-            col: "float" for col in boxoffice_df.columns
-            if any(x in col for x in ["Cnt", "Amt", "Share", "Inten", "Change", "Acc"])
-        }
-        boxoffice_df = boxoffice_df.astype(col_types)
-        boxoffice_df["elapsedDt"] = (boxoffice_df["targetDt"] - boxoffice_df["openDt"]).dt.days
+        col_types = infer_col_types_from_df(boxoffice_df)
+        boxoffice_df = auto_cast_dataframe(boxoffice_df, col_types)
+
+        # 2. 날짜 컬럼만 별도로 datetime으로 변환
+        for date_col in ["target_dt", "open_dt"]:
+            if date_col in boxoffice_df.columns:
+                boxoffice_df[date_col] = pd.to_datetime(boxoffice_df[date_col], errors='coerce')
+
+        # 3. 날짜 차이 계산
+        boxoffice_df["elapsed_dt"] = (boxoffice_df["target_dt"] - boxoffice_df["open_dt"]).dt.days
         return boxoffice_df
 
 if __name__ == '__main__':
     kobisdata_extractor = KobisDataExtractor()
-    MovieList = kobisdata_extractor.get_MovieList(2024)
-    print("MovieList")
-    print(MovieList.head(3))
-    print(MovieList["openDt"].min())
+    df = kobisdata_extractor.get_MovieList(2024)
+    print(df.head(3))
+
+    target_dt = datetime(2025, 7, 20)
+    df = kobisdata_extractor.get_DailyBoxOffice(target_dt)
+    print(df.head())

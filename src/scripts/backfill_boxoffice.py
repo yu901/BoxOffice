@@ -2,8 +2,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from tqdm import tqdm
-from ..boxoffice.logic.kobisdata_extractor import KobisDataExtractor
-from ..boxoffice.logic.sqlite_connector import SQLiteConnector
+from src.boxoffice.logic.kobisdata_extractor import KobisDataExtractor
+from src.boxoffice.logic.sqlite_connector import SQLiteConnector
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -32,7 +32,7 @@ def backfill_daily_boxoffice(start_date_str: str, end_date_str: str):
         cursor = conn.cursor()
         start_dt_sql_format = start_dt.strftime('%Y-%m-%d')
         end_dt_sql_format = end_dt.strftime('%Y-%m-%d')
-        delete_query = f"DELETE FROM boxoffice WHERE date(targetDt) >= date('{start_dt_sql_format}') AND date(targetDt) <= date('{end_dt_sql_format}')"
+        delete_query = f"DELETE FROM boxoffice WHERE date(target_dt) >= date('{start_dt_sql_format}') AND date(target_dt) <= date('{end_dt_sql_format}')"
         cursor.execute(delete_query)
         conn.commit()
         logger.info(f"기존 데이터 {cursor.rowcount}건 삭제 완료.")
