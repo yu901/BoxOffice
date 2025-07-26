@@ -8,7 +8,7 @@
 ![AI 분석가 탭](images/dagster.png)
 - **멀티 소스 스크레이핑**: CGV, 롯데시네마, 메가박스의 이벤트 및 재고 현황을 안정적으로 스크레이핑합니다.
 - **데이터 파이프라인 관리**: Dagster를 사용하여 데이터 수집 및 저장 파이프라인을 체계적으로 관리하고 모니터링합니다.
-- **데이터 영속성**: 수집된 모든 데이터는 로컬 SQLite 데이터베이스에 저장됩니다.
+- **데이터 영속성**: 수집된 모든 데이터는 로컬 SQLite 또는 Supabase 데이터베이스에 저장됩니다.
 - **인터랙티브 대시보드**: Streamlit 기반의 대시보드를 통해 다음 정보를 시각적으로 탐색할 수 있습니다.
   - **AI 데이터 분석가**: Gemini API를 활용한 AI 챗봇을 통해 자연어로 영화 데이터를 질문하고 분석 결과를 얻을 수 있습니다.
 ![AI 분석가 탭](images/ai_tab.png)
@@ -68,6 +68,16 @@ BoxOffice/
 
     ```toml
     # .streamlit/secrets.toml
+    [database]
+    type = "sqlite" # 또는 "supabase"
+
+    [sqlite] # SQLite를 사용하는 경우
+    db_path = "./db/movie.sqlite"
+
+    [supabase] # Supabase를 사용하는 경우
+    url = "YOUR_SUPABASE_URL"
+    service_role_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+
     [kobis]
     key = "YOUR_KOBIS_API_KEY"
 
@@ -100,7 +110,7 @@ chmod +x scripts/*.sh
 ### 서비스 접속
 
 - **Dagster UI**: 웹 브라우저에서 `http://localhost:3000` 주소로 접속하세요.
-- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소로 접속하여 'AI 데이터 분석가' 탭을 포함한 다양한 기능을 사용해 보세요.
+- **Streamlit 대시보드**: 웹 브라우저에서 `http://localhost:8501` 주소 또는 [https://boxoffice-dashboard.streamlit.app/](https://boxoffice-dashboard.streamlit.app/) 에 접속하여 다양한 기능을 사용해 보세요.
 
 ### 서비스 중지
 
@@ -132,7 +142,7 @@ chmod +x scripts/*.sh
 - **AI & LLM**: Google Gemini API
 - **Dashboard**: Streamlit, Altair
 - **Data Handling**: Pandas, SQLAlchemy
-- **Database**: SQLite
+- **Database**: SQLite, Supabase
 - **Web Scraping**: Requests, BeautifulSoup
 
 ---
