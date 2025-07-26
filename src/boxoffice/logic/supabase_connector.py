@@ -1,6 +1,6 @@
 from supabase import create_client, Client
-from src.boxoffice.logic.config import SupabaseConfig
-from src.boxoffice.logic.base_connector import BaseDatabaseConnector
+from .config import SupabaseConfig
+from .base_connector import BaseDatabaseConnector
 import pandas as pd
 from typing import List, Dict
 from datetime import datetime, date # datetime과 date import 추가
