@@ -9,10 +9,14 @@ from typing import List, Dict, TypedDict, Optional, Union
 import logging
 import html
 from datetime import datetime
+import time
+import hmac
+import hashlib
+import base64
 from .sqlite_connector import SQLiteConnector
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # --- 통합 데이터 구조 정의 ---
 
@@ -160,13 +164,45 @@ class CGVScraper(TheaterEventScraper):
 
     def __init__(self):
         super().__init__("CGV")
-        self.EVENT_LIST_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtListForPage"
-        self.EVENT_DETAIL_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtProdList"
-        self.THEATER_STOCK_URL = "https://event-mobile.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtTgtsiteList"
+        # API 도메인 변경: event-mobile.cgv.co.kr -> event.cgv.co.kr
+        self.EVENT_LIST_URL = "https://event.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtListForPage"
+        self.EVENT_DETAIL_URL = "https://event.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtProdList"
+        self.THEATER_STOCK_URL = "https://event.cgv.co.kr/evt/saprm/saprm/searchSaprmEvtTgtsiteList"
+        self.MOVIE_EVENT_LIST_URL = "https://event.cgv.co.kr/evt/evt/evt/searchEvtListForPage"
+        self._signature_secret = "ydqXY0ocnFLmJGHr_zNzFcpjwAsXq_8JcBNURAkRscg"
         self.session.headers.update({
-            "Referer": "https://cgv.co.kr/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "ko-KR",
             "Origin": "https://cgv.co.kr",
+            "Referer": "https://cgv.co.kr/",
         })
+
+    def _create_signature(self, pathname: str, body: str = "") -> tuple:
+        """CGV API 서명 생성
+
+        Returns:
+            tuple: (timestamp, signature)
+        """
+        timestamp = str(int(time.time()))
+        message = f"{timestamp}|{pathname}|{body}"
+        signature = hmac.new(
+            self._signature_secret.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).digest()
+        return timestamp, base64.b64encode(signature).decode()
+
+    def _get_with_signature(self, url: str, params: dict = None) -> requests.Response:
+        """서명이 포함된 GET 요청"""
+        from urllib.parse import urlparse
+        pathname = urlparse(url).path
+        timestamp, signature = self._create_signature(pathname)
+        headers = {
+            "X-Timestamp": timestamp,
+            "X-Signature": signature,
+        }
+        return self.session.get(url, params=params, headers=headers)
 
     def _normalize_goods_name(self, goods_name: str) -> str:
         """굿즈 이름을 정규화합니다."""
@@ -191,7 +227,7 @@ class CGVScraper(TheaterEventScraper):
         """이벤트 ID로 굿즈 정보(ID, 이름)를 조회합니다."""
         try:
             params = {"coCd": "A420", "saprmEvntNo": event_idx}
-            response = self.session.get(self.EVENT_DETAIL_URL, params=params)
+            response = self._get_with_signature(self.EVENT_DETAIL_URL, params=params)
             response.raise_for_status()
             data = response.json()
             items = data.get("data", [])
@@ -210,9 +246,9 @@ class CGVScraper(TheaterEventScraper):
     def _get_movie_events(self) -> List[UnifiedEvent]:
         """
         CGV 영화 관련 이벤트 목록을 스크랩합니다.
-        (https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage)
         """
         self.logger.info("CGV 영화 이벤트 목록 조회를 시작합니다.")
+
         all_events = []
         # "03": 영화, "01": SPECIAL
         event_category_codes = ["03", "01"]
@@ -222,8 +258,6 @@ class CGVScraper(TheaterEventScraper):
             start_row = 0
             list_count = 20
             total_count = -1
-            
-            url = "https://event-mobile.cgv.co.kr/evt/evt/evt/searchEvtListForPage"
 
             while True:
                 if total_count != -1 and start_row >= total_count:
@@ -239,7 +273,7 @@ class CGVScraper(TheaterEventScraper):
                     "listCount": list_count,
                 }
                 try:
-                    response = self.session.get(url, params=params)
+                    response = self._get_with_signature(self.MOVIE_EVENT_LIST_URL, params=params)
                     response.raise_for_status()
                     data = response.json().get("data", {})
                     
@@ -368,6 +402,7 @@ class CGVScraper(TheaterEventScraper):
 
     def _get_goods_events(self) -> List[UnifiedEvent]:
         self.logger.info("CGV 굿즈 이벤트 목록 조회를 시작합니다.")
+
         all_events = []
         start_row = 0
         list_count = 20
@@ -384,7 +419,10 @@ class CGVScraper(TheaterEventScraper):
                 "listCount": list_count
             }
             try:
-                response = self.session.get(self.EVENT_LIST_URL, params=params)
+                response = self._get_with_signature(self.EVENT_LIST_URL, params=params)
+                self.logger.debug(f"Response status: {response.status_code}")
+                if response.status_code == 401:
+                    self.logger.error(f"401 Response body: {response.text}")
                 response.raise_for_status()
                 response_data = response.json()
                 data = response_data.get("data", {})
@@ -468,16 +506,16 @@ class CGVScraper(TheaterEventScraper):
 
         self.logger.info(f"'{event.get('goods_name', 'N/A')}' 재고 조회를 시작합니다. (Event ID: {event_id}, Goods ID: {goods_id}, Spmtl No: {spmtl_no})")
         all_stocks = []
-        
+
         params = {
             "coCd": "A420",
             "saprmEvntNo": event_id,
             "saprmEvntProdNo": goods_id,
             "spmtlNo": spmtl_no
         }
-        
+
         try:
-            response = self.session.get(self.THEATER_STOCK_URL, params=params)
+            response = self._get_with_signature(self.THEATER_STOCK_URL, params=params)
             response.raise_for_status()
             data = response.json().get("data", [])
             theaters = data if isinstance(data, list) else data.get("list", [])
